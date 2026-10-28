@@ -1,0 +1,22 @@
+# 编译产物
+*.exe
+*.o
+*.obj
+*.ilk
+*.pdb
+*.res
+
+# 构建目录
+build/
+out/
+bin/
+
+# 在源码目录内直接跑 cmake 时生成的中间文件
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Testing/
+Makefile
+
+# 运行时导出的报告
+LogGuard_Report.csv
