@@ -20,3 +20,6 @@ Makefile
 
 # 运行时导出的报告
 LogGuard_Report.csv
+
+# 日志样本（可能含用户名/IP，不要提交）
+*.evtx

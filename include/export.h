@@ -3,7 +3,7 @@
 
 #include "log_entry.h"
 
-/* 将日志数组导出为 CSV 文件，返回成功导出的条数，<0 表示失败 */
-int ExportToCsv(const LogEntry *logs, int count, const char *filename);
+/* 将日志数组导出为 CSV 文件（宽字符路径，支持中文路径），返回成功导出的条数，<0 表示失败 */
+int ExportToCsv(const LogEntry *logs, int count, const wchar_t *filename);
 
 #endif

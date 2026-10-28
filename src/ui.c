@@ -1,20 +1,23 @@
 #include <stdio.h>
 #include "ui.h"
+#include "version.h"
 
 void PrintWelcome(void)
 {
     printf("============================================================\n");
-    printf("       欢迎使用 LogGuard 终端安全日志分析系统 V2.0\n");
-    printf("       数据源：本机 Windows Security 事件日志\n");
+    printf("       欢迎使用 LogGuard 终端安全日志分析系统 V%s\n", LOGUARD_VERSION);
+    printf("       数据源：本机 Security 事件日志 / .evtx 文件\n");
     printf("============================================================\n");
 }
 
 /* 直接遍历菜单数组打印，再也不用 if (option == 1) 了 */
-void PrintMenu(const MenuItem *menu, int menuSize)
+void PrintMenu(const MenuItem *menu, int menuSize, const char *sourceDesc)
 {
     printf("\n============================================================\n");
-    printf("                       LogGuard v2.0\n");
+    printf("                       LogGuard v%s\n", LOGUARD_VERSION);
     printf("============================================================\n");
+    printf("   数据源：%s\n", sourceDesc ? sourceDesc : "-");
+    printf("------------------------------------------------------------\n");
     for (int i = 0; i < menuSize; i++) {
         printf("   %d. %s\n", menu[i].id, menu[i].name);
     }

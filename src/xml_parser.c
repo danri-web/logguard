@@ -56,11 +56,25 @@ static void FormatUserDescription(char *dst, size_t dstLen, const char *prefix,
 
 int XmlGetEventId(const wchar_t *xml, int *eventId)
 {
-    const wchar_t *start = wcsstr(xml, L"<EventID>");
+    const wchar_t *start;
+    const wchar_t *gt;
+
+    if (!xml || !eventId) return -1;
+
+    start = wcsstr(xml, L"<EventID");
     if (!start) return -1;
-    start += 9; // 跳过 "<EventID>"
-    
-    return swscanf(start, L"%d", eventId) == 1 ? 0 : -1;
+    start += 8; /* 跳过 "<EventID" */
+
+    /* 兼容 <EventID>4625</EventID> 与 <EventID Qualifiers="16384">4625</EventID> */
+    if (*start != L'>' && *start != L' ' && *start != L'\t' &&
+        *start != L'\r' && *start != L'\n') {
+        return -1;
+    }
+
+    gt = wcschr(start, L'>');
+    if (!gt) return -1;
+
+    return swscanf(gt + 1, L"%d", eventId) == 1 ? 0 : -1;
 }
 
 int XmlGetDataValue(const wchar_t *xml, const wchar_t *name, char *out, size_t outLen)

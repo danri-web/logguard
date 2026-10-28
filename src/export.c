@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <wchar.h>
 #include "export.h"
 
 /*
@@ -37,11 +38,11 @@ static void WriteCsvField(FILE *fp, const char *str)
     }
 }
 
-int ExportToCsv(const LogEntry *logs, int count, const char *filename)
+int ExportToCsv(const LogEntry *logs, int count, const wchar_t *filename)
 {
     if (!logs || count <= 0 || !filename) return -1;
 
-    FILE *fp = fopen(filename, "w");
+    FILE *fp = _wfopen(filename, L"w");
     if (!fp) return -1;
 
     /* 写入 UTF-8 BOM 头，防止 Excel 打开中文乱码 */

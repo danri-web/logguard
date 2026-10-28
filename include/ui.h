@@ -13,8 +13,8 @@ typedef struct {
     int isAggregate; /* 是否聚合查询 (比如爆破检测) */
 } MenuItem;
 
-/* 修改参数，直接传入 MenuItem */
-void PrintMenu(const MenuItem *menu, int menuSize);
+/* 修改参数，直接传入 MenuItem；sourceDesc 显示当前数据源 */
+void PrintMenu(const MenuItem *menu, int menuSize, const char *sourceDesc);
 void PrintHeader(const MenuItem *item);
 void PrintFooter(const MenuItem *item, int count);
 void PrintLogEntry(const LogEntry *log, int index);

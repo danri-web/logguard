@@ -42,14 +42,18 @@ static void FormatWinErrorWithCode(DWORD code, wchar_t *buf, size_t len)
     }
 }
 
-int ReadSecurityLogs(LogEntry *out, int maxCount, const wchar_t *xpath, wchar_t *errBuf, size_t errLen)
+int ReadLogs(const wchar_t *target, int isFile,
+             LogEntry *out, int maxCount, const wchar_t *xpath,
+             wchar_t *errBuf, size_t errLen)
 {
-    if (!out || maxCount <= 0 || !xpath) return -1;
+    if (!target || !out || maxCount <= 0 || !xpath) return -1;
 
     // 1. 发起查询
-    // EvtQueryChannelPath: 查询通道
+    // EvtQueryChannelPath: 查询本机通道；EvtQueryFilePath: 查询 .evtx 文件
     // EvtQueryReverseDirection: 逆序（最新的日志在前）
-    EVT_HANDLE hQuery = EvtQuery(NULL, L"Security", xpath, EvtQueryChannelPath | EvtQueryReverseDirection);
+    DWORD queryFlags = (isFile ? EvtQueryFilePath : EvtQueryChannelPath)
+                     | EvtQueryReverseDirection;
+    EVT_HANDLE hQuery = EvtQuery(NULL, target, xpath, queryFlags);
     if (!hQuery) {
         if (errBuf) FormatWinErrorWithCode(GetLastError(), errBuf, errLen);
         return -1;
@@ -99,4 +103,10 @@ int ReadSecurityLogs(LogEntry *out, int maxCount, const wchar_t *xpath, wchar_t 
 cleanup:
     EvtClose(hQuery);
     return count;
+}
+
+int ReadSecurityLogs(LogEntry *out, int maxCount, const wchar_t *xpath,
+                     wchar_t *errBuf, size_t errLen)
+{
+    return ReadLogs(L"Security", 0, out, maxCount, xpath, errBuf, errLen);
 }
