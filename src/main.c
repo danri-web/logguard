@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stddef.h>
 #include <wchar.h>
+#include <time.h>
 #include <windows.h>
 
 #include "log_entry.h"
@@ -10,6 +11,7 @@
 #include "filter.h"
 #include "ui.h"
 #include "stats.h"
+#include "report.h"
 #include "export.h"
 #include "cli.h"
 #include "version.h"
@@ -22,8 +24,17 @@
 /* 命令行文件路径上限（宽字符数） */
 #define LOGUARD_PATH_MAX 512
 
-/* 菜单里的统计面板编号：不看具体 EventID，输出数据总览 */
-#define MENU_ID_STATS 9
+/* 菜单里的统计面板 / HTML 报告编号：都不按 EventID 收窄 */
+#define MENU_ID_STATS  9
+#define MENU_ID_REPORT 10
+
+/* 一次查询的输出选项（批处理与交互共用） */
+typedef struct {
+    const wchar_t *csvPath;   /* != NULL：导出 CSV */
+    const wchar_t *htmlPath;  /* != NULL：生成 HTML 报告 */
+    int askExport;            /* 交互模式：查询后询问是否导出 CSV */
+    int statsMode;            /* 输出统计面板 */
+} OutputOptions;
 
 static LogEntry g_logs[LOG_MAX_COUNT];
 static int      g_logCount = 0;
@@ -44,7 +55,8 @@ static const MenuItem g_menuList[] = {
     {6, "系统特权分配监控", "监控 4672 特权分配事件 (防提权)", 100, 0},
     {7, "隐蔽后门账号监控", "监控 4720 创建账户事件 (防留后门)", 100, 0},
     {8, "切换数据源（本机 / .evtx 文件）", "分析导出的 .evtx 文件，或切回本机 Security", 0, 0},
-    {9, "统计面板", "事件分布 / Top 源 IP / Top 用户名 / 按小时直方图", 500, 0}
+    {9, "统计面板", "事件分布 / Top 源 IP / Top 用户名 / 按小时直方图", 500, 0},
+    {10, "导出 HTML 报告", "单文件（内嵌 CSS），统计图 + 记录明细", 500, 0}
 };
 static const int g_menuSize = sizeof(g_menuList) / sizeof(g_menuList[0]);
 
@@ -127,8 +139,8 @@ static const wchar_t *XpathForId(int id)
 {
     if (id == 6) return L"*[System[(EventID=4672)]]";
     if (id == 7) return L"*[System[(EventID=4720)]]";
-    /* 统计面板看数据源里的事件全貌，不按 EventID 收窄 */
-    if (id == MENU_ID_STATS) return L"*";
+    /* 统计面板与 HTML 报告看数据源里的事件全貌，不按 EventID 收窄 */
+    if (id == MENU_ID_STATS || id == MENU_ID_REPORT) return L"*";
     return L"*[System[(EventID=4624 or EventID=4625)]]";
 }
 
@@ -322,19 +334,65 @@ static int ExportAndReport(const LogEntry *logs, int count, const wchar_t *path)
     return 3;
 }
 
+/* 生成单文件 HTML 报告；返回 0 成功，3 失败（与退出码一致） */
+static int WriteHtmlReport(const StatsSummary *summary, const LogEntry *logs, int count,
+                           const MenuItem *item, const wchar_t *target, int isFile,
+                           const wchar_t *path)
+{
+    ReportMeta meta;
+    char desc[LOGUARD_PATH_MAX * 4 + 16];
+    char pathUtf8[LOGUARD_PATH_MAX * 4] = {0};
+    char when[64] = "-";
+    time_t now;
+    struct tm *local;
+    FILE *fp;
+    int ok;
+
+    now = time(NULL);
+    local = localtime(&now);
+    if (local != NULL) strftime(when, sizeof(when), "%Y-%m-%d %H:%M:%S", local);
+
+    DescribeSource(target, isFile, desc, sizeof(desc));
+    /* 菜单项“统计面板/导出 HTML 报告”本身不是规则，报告里统一叫数据总览 */
+    meta.title = (item->id == MENU_ID_STATS || item->id == MENU_ID_REPORT)
+               ? "数据总览" : item->name;
+    meta.source = desc;
+    meta.version = LOGUARD_VERSION;
+    meta.generatedAt = when;
+
+    /* 二进制写：HTML 统一用 LF，不受文本模式换行转换影响 */
+    fp = _wfopen(path, L"wb");
+    if (fp == NULL) {
+        PrintError("生成 HTML 报告失败：无法创建文件，请检查路径和写入权限。");
+        return 3;
+    }
+
+    ok = Report_WriteHtml(fp, &meta, summary, logs, count);
+    if (fclose(fp) != 0) ok = -1;
+    if (ok != 0) {
+        PrintError("生成 HTML 报告失败：写入过程中出错（磁盘空间或权限）。");
+        return 3;
+    }
+
+    WideToUtf8(path, pathUtf8, sizeof(pathUtf8));
+    printf("  %s>> 已生成 HTML 报告（%d 条记录）: %s%s\n",
+           AnsiGreen(), count, pathUtf8, AnsiReset());
+    return 0;
+}
+
 /*
- * 执行一次查询：读日志 -> 过滤/聚合/统计 -> 打印 -> 可选导出。
- * statsMode 为 1 时不逐条打印，改为输出统计面板；导出仍是原始记录。
- * 返回 0 成功，1 内存错误，2 读取失败，3 导出失败。
+ * 执行一次查询：读日志 -> 过滤/聚合/统计 -> 打印 -> 可选导出 CSV / HTML。
+ * statsMode 或 htmlPath 会进入「汇总模式」：不逐条打印。
+ * 返回 0 成功，1 内存错误，2 读取失败，3 写文件失败。
  */
 static int ExecuteQuery(const MenuItem *item, const wchar_t *target, int isFile,
-                        int maxRead, const wchar_t *exportPath, int askExport,
-                        int statsMode)
+                        int maxRead, const OutputOptions *out)
 {
     wchar_t errBuf[256] = {0};
     LogEntry *matched;
     int count = 0;
     int rc = 0;
+    int summaryMode = (out->statsMode || out->htmlPath != NULL);
 
     if (maxRead <= 0 || maxRead > LOG_MAX_COUNT) maxRead = 100;
 
@@ -361,27 +419,34 @@ static int ExecuteQuery(const MenuItem *item, const wchar_t *target, int isFile,
         return 2;
     }
 
-    if (!statsMode) PrintHeader(item);
+    if (!summaryMode) PrintHeader(item);
 
     if (g_logCount == 0) {
         PrintInfo(isFile ? "文件中没有读取到日志记录。" : "没有读取到任何日志记录。");
         return 0;
     }
 
-    if (statsMode) {
+    if (summaryMode) {
         char desc[LOGUARD_PATH_MAX * 4 + 16];
         StatsSummary summary;
-        const char *panelTitle = (item->id == MENU_ID_STATS) ? "数据总览" : item->name;
 
         if (Stats_Compute(g_logs, g_logCount, &summary) != 0) {
             PrintError("统计失败：内存不足。");
             return 1;
         }
-        DescribeSource(target, isFile, desc, sizeof(desc));
-        PrintStatsPanel(&summary, panelTitle, desc);
 
-        if (exportPath != NULL) {
-            rc = ExportAndReport(g_logs, g_logCount, exportPath);
+        if (out->statsMode) {
+            const char *panelTitle = (item->id == MENU_ID_STATS) ? "数据总览" : item->name;
+            DescribeSource(target, isFile, desc, sizeof(desc));
+            PrintStatsPanel(&summary, panelTitle, desc);
+        }
+        if (out->htmlPath != NULL) {
+            rc = WriteHtmlReport(&summary, g_logs, g_logCount, item, target, isFile,
+                                 out->htmlPath);
+        }
+        if (out->csvPath != NULL) {
+            int csvRc = ExportAndReport(g_logs, g_logCount, out->csvPath);
+            if (rc == 0) rc = csvRc;
         }
         return rc;
     }
@@ -416,9 +481,9 @@ static int ExecuteQuery(const MenuItem *item, const wchar_t *target, int isFile,
     } else {
         PrintFooter(item, count);
 
-        if (exportPath != NULL) {
-            rc = ExportAndReport(matched, count, exportPath);
-        } else if (askExport) {
+        if (out->csvPath != NULL) {
+            rc = ExportAndReport(matched, count, out->csvPath);
+        } else if (out->askExport) {
             AskAndExport(matched, count);
         }
     }
@@ -432,10 +497,14 @@ static void RunQuery(const MenuItem *item)
 {
     const wchar_t *target = g_sourcePath[0] != L'\0' ? g_sourcePath : L"Security";
     int isFile = g_sourcePath[0] != L'\0';
-    int statsMode = (item->id == MENU_ID_STATS);
+    OutputOptions out;
 
-    ExecuteQuery(item, target, isFile, item->maxRead, NULL,
-                 statsMode ? 0 : 1, statsMode);
+    out.csvPath = NULL;
+    out.htmlPath = (item->id == MENU_ID_REPORT) ? L"LogGuard_Report.html" : NULL;
+    out.askExport = (item->id == MENU_ID_STATS || item->id == MENU_ID_REPORT) ? 0 : 1;
+    out.statsMode = (item->id == MENU_ID_STATS);
+
+    ExecuteQuery(item, target, isFile, item->maxRead, &out);
 }
 
 /* 批处理模式：一条命令完成查询和导出 */
@@ -448,8 +517,8 @@ static int RunBatch(const CliOptions *opt)
     int limit;
     char desc[LOGUARD_PATH_MAX * 4 + 16];
 
-    if (opt->stats) {
-        /* --stats 默认看全部事件；带了 --filter 就只统计该规则命中的样本 */
+    if (opt->stats || opt->hasHtml) {
+        /* --stats / --html 默认看全部事件；带了 --filter 就只用该规则命中的样本 */
         filterId = opt->filterId > 0 ? opt->filterId : MENU_ID_STATS;
     } else {
         filterId = opt->filterId > 0 ? opt->filterId : 1;
@@ -479,8 +548,16 @@ static int RunBatch(const CliOptions *opt)
                         "可改用 --file 分析 .evtx。\n");
     }
 
-    return ExecuteQuery(item, target, isFile, limit,
-                        opt->hasExport ? opt->exportPath : NULL, 0, opt->stats);
+    {
+        OutputOptions out;
+
+        out.csvPath = opt->hasExport ? opt->exportPath : NULL;
+        out.htmlPath = opt->hasHtml ? opt->htmlPath : NULL;
+        out.askExport = 0;
+        out.statsMode = opt->stats;
+
+        return ExecuteQuery(item, target, isFile, limit, &out);
+    }
 }
 
 static int RunInteractive(void)

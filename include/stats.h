@@ -57,4 +57,7 @@ typedef struct {
  */
 int Stats_Compute(const LogEntry *logs, int count, StatsSummary *out);
 
+/* EventID 的展示短名（中文）；未收录的 ID 返回“其它”。面板与 HTML 报告共用。 */
+const char *Stats_EventName(int eventId);
+
 #endif /* STATS_H */

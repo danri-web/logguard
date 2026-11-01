@@ -49,18 +49,6 @@ void PrintLogEntry(const LogEntry *log, int index)
     printf("+----------------------------------------------------------\n");
 }
 
-/* EventID 对应的中文短名；未收录的 ID 统一显示“其它” */
-static const char *EventShortName(int eventId)
-{
-    switch (eventId) {
-        case 4624: return "登录成功";
-        case 4625: return "登录失败";
-        case 4672: return "特权分配";
-        case 4720: return "创建账户";
-        default:   return "其它";
-    }
-}
-
 /* 用 # 画最多 width 格的横条；非零至少画 1 格 */
 static void PrintBar(int value, int maxValue, int width)
 {
@@ -105,7 +93,7 @@ void PrintStatsPanel(const StatsSummary *summary, const char *title,
                        : 0.0;
             printf("    %d  %s  %d 条  %.1f%%  ",
                    summary->events[i].eventId,
-                   EventShortName(summary->events[i].eventId),
+                   Stats_EventName(summary->events[i].eventId),
                    summary->events[i].count, pct);
             PrintBar(summary->events[i].count, maxCount, 20);
             printf("\n");

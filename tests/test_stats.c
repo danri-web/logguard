@@ -272,6 +272,15 @@ static void TestInputUnchanged(void)
     CHECK_EQ(2, s.total, "输入不变：total 为 2");
 }
 
+static void TestEventNames(void)
+{
+    CHECK_STR("登录成功", Stats_EventName(4624), "事件名：4624 登录成功");
+    CHECK_STR("登录失败", Stats_EventName(4625), "事件名：4625 登录失败");
+    CHECK_STR("特权分配", Stats_EventName(4672), "事件名：4672 特权分配");
+    CHECK_STR("创建账户", Stats_EventName(4720), "事件名：4720 创建账户");
+    CHECK_STR("其它", Stats_EventName(9999), "事件名：未知 ID 归为其它");
+}
+
 int main(void)
 {
     TestParamErrors();
@@ -285,6 +294,7 @@ int main(void)
     TestPeakHour();
     TestAllTimesInvalid();
     TestInputUnchanged();
+    TestEventNames();
 
     printf("\n%d checks, %d failed.\n", g_total, g_failed);
     if (g_failed == 0) {

@@ -23,6 +23,9 @@ typedef struct {
     int hasExport;
     wchar_t exportPath[CLI_PATH_MAX];
 
+    int hasHtml;
+    wchar_t htmlPath[CLI_PATH_MAX];
+
     int filterId;
     int limit;                    /* 0 = 未指定 */
     int stats;                    /* 1 = 输出统计面板而不是逐条记录 */

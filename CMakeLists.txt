@@ -10,7 +10,7 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     add_compile_options(-Wall -Wextra)
 endif()
 
-# 收集源文件（注意：export.c / cli.c / stats.c 必须在内）
+# 收集源文件（注意：export.c / cli.c / stats.c / report.c 必须在内）
 set(SOURCES
     src/main.c
     src/log_reader.c
@@ -18,6 +18,7 @@ set(SOURCES
     src/filter.c
     src/ui.c
     src/stats.c
+    src/report.c
     src/export.c
     src/cli.c
 )
@@ -66,6 +67,17 @@ add_executable(test_stats
 target_include_directories(test_stats PRIVATE include)
 
 add_test(NAME TestStats COMMAND test_stats)
+
+# HTML 报告同样只用 LogEntry/StatsSummary，不依赖 Win32
+add_executable(test_report
+    tests/test_report.c
+    src/report.c
+    src/stats.c
+    src/filter.c
+)
+target_include_directories(test_report PRIVATE include)
+
+add_test(NAME TestReport COMMAND test_report)
 
 if(WIN32)
     add_executable(test_xml

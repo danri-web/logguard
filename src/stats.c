@@ -164,3 +164,14 @@ int Stats_Compute(const LogEntry *logs, int count, StatsSummary *out)
     free(users);
     return 0;
 }
+
+const char *Stats_EventName(int eventId)
+{
+    switch (eventId) {
+        case 4624: return "登录成功";
+        case 4625: return "登录失败";
+        case 4672: return "特权分配";
+        case 4720: return "创建账户";
+        default:   return "其它";
+    }
+}

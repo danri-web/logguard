@@ -142,6 +142,13 @@ int Cli_Parse(int argc, wchar_t *const *argv, CliOptions *opt)
         } else if (WcsEqual(arg, L"--stats")) {
             opt->stats = 1;
             opt->batch = 1;
+        } else if (WcsEqual(arg, L"--html")) {
+            if (++i >= argc) return Fail(opt, "--html 需要一个 HTML 报告路径");
+            if (!CopyPath(opt->htmlPath, argv[i])) {
+                return Fail(opt, "--html 路径为空或过长（最多 511 个字符）");
+            }
+            opt->hasHtml = 1;
+            opt->batch = 1;
         } else if (WcsEqual(arg, L"--export")) {
             if (++i >= argc) return Fail(opt, "--export 需要一个 CSV 文件路径");
             if (!CopyPath(opt->exportPath, argv[i])) {
@@ -173,6 +180,7 @@ void Cli_PrintUsage(void)
     printf("  --export <路径>     把结果导出为 CSV 文件\n");
     printf("  --stats             输出统计面板（事件分布 / Top 源 IP / Top 用户名 / 按小时）\n");
     printf("                     可配合 --filter 只统计某类事件；与 --export 同用时导出原始记录\n");
+    printf("  --html <路径>       生成单文件 HTML 报告（内嵌 CSS，统计图 + 记录明细）\n");
     printf("  --no-color          关闭 ANSI 颜色\n");
     printf("  -h, --help          显示本帮助\n");
     printf("  -V, --version       显示版本号\n\n");
@@ -180,5 +188,6 @@ void Cli_PrintUsage(void)
     printf("  LogGuard.exe --file logs\\Security.evtx --filter failed --limit 200\n");
     printf("  LogGuard.exe --file Security.evtx --filter brute --export report.csv\n");
     printf("  LogGuard.exe --file Security.evtx --stats\n");
+    printf("  LogGuard.exe --file Security.evtx --html report.html\n");
     printf("  LogGuard.exe --file Security.evtx --filter 6 --no-color\n");
 }

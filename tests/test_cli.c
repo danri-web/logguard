@@ -224,6 +224,36 @@ static void TestStats(void)
     }
 }
 
+static void TestHtml(void)
+{
+    CliOptions opt;
+
+    {
+        wchar_t *argv[] = { L"LogGuard.exe", L"--html", L"report.html" };
+        CHECK(Cli_Parse(3, argv, &opt) == 0, "解析 --html 成功");
+        CHECK(opt.hasHtml == 1, "--html 置位");
+        CHECK_WSTR(L"report.html", opt.htmlPath, "--html 路径正确");
+        CHECK(opt.batch == 1, "--html 进入批处理");
+    }
+    {
+        wchar_t *argv[] = { L"LogGuard.exe", L"--html", L"r.html", L"--stats" };
+        CHECK(Cli_Parse(4, argv, &opt) == 0, "--html 与 --stats 组合成功");
+        CHECK(opt.hasHtml == 1 && opt.stats == 1, "HTML 与统计同时置位");
+    }
+    {
+        wchar_t *argv[] = { L"LogGuard.exe", L"--html" };
+        CHECK(Cli_Parse(2, argv, &opt) == -1, "--html 缺值报错");
+    }
+    {
+        wchar_t *argv[] = { L"LogGuard.exe", L"--html", L"" };
+        CHECK(Cli_Parse(3, argv, &opt) == -1, "--html 空路径报错");
+    }
+    {
+        wchar_t *argv[] = { L"LogGuard.exe" };
+        CHECK(Cli_Parse(1, argv, &opt) == 0 && opt.hasHtml == 0, "默认不生成 HTML");
+    }
+}
+
 int main(void)
 {
     TestHelpAndVersion();
@@ -233,6 +263,7 @@ int main(void)
     TestErrors();
     TestDefaults();
     TestStats();
+    TestHtml();
 
     printf("\n%d checks, %d failed.\n", g_total, g_failed);
     if (g_failed == 0) {

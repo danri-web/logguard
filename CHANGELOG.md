@@ -1,5 +1,22 @@
 # Changelog
 
+## [3.2.0] - 2026-11-01
+
+### Added
+
+- HTML 报告（菜单 10 / `--html <路径>`）：单文件、内嵌 CSS、无外部依赖；
+  汇总行 + 事件分布横条 + Top 源 IP / Top 用户名 + 按小时柱状图（峰值标红）+ 记录明细表，
+  跟随系统深色模式。
+- `src/report.c` + `include/report.h`：纯 C99 渲染层，只往 `FILE*` 写，不碰 Win32；
+  `tests/test_report.c`（33 条断言）覆盖文档结构、`& < > " '` 转义、空样本与非法参数。
+- `Stats_EventName` 从 `ui.c` 移到 `stats.c`，面板与报告共用同一份 EventID 中文名。
+
+### Changed
+
+- `--stats` 与 `--html` 可以组合：一次查询同时打印面板并写报告；`--html` 单独使用时默认统计全部事件。
+- `ExecuteQuery` 的输出选项收敛成 `OutputOptions`（CSV / HTML / 是否询问 / 统计模式）。
+- 退出码 `3` 的含义从「导出失败」扩展为「写文件失败（CSV / HTML）」。
+
 ## [3.1.0] - 2026-11-01
 
 ### Added

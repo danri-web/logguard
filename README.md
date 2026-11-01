@@ -3,7 +3,7 @@
 基于 Win32 事件日志 API（`winevt`）的 Windows 安全日志分析终端工具，C99 实现，无第三方依赖。
 
 支持两种数据源：**本机 Security 通道**（实时）和 **导出的 `.evtx` 文件**（离线，不需要管理员）。
-交互菜单与命令行批处理两种用法，查询结果可导出为 CSV，也可以直接输出统计面板。
+交互菜单与命令行批处理两种用法，查询结果可导出为 CSV、输出统计面板，或生成单文件 HTML 报告。
 
 > 读取本机 Security 通道需要管理员权限；分析 `.evtx` 文件不需要。
 > 程序以 `asInvoker` 启动，不会强制弹 UAC；在非管理员环境下会给出提示。
@@ -25,6 +25,7 @@
 | 7 | 隐蔽后门账号监控 | `EventID == 4720`（防留后门） |
 | 8 | 切换数据源 | 在本机 Security 通道与 `.evtx` 文件之间切换 |
 | 9 | 统计面板 | 事件分布、Top 源 IP、Top 用户名、按小时直方图 |
+| 10 | 导出 HTML 报告 | 单文件（内嵌 CSS），统计图 + 记录明细 |
 
 每条记录展示：EventId、时间、用户名、LogonType、描述、源 IP、进程名。
 查询结束后可选择导出 CSV（带 UTF-8 BOM，Excel 直接打开不乱码）。
@@ -53,6 +54,19 @@
 - 源 IP 排除空串与 `-`（本机登录等没有来源的场景）；用户名去掉 `DOMAIN\` 前缀，并按 ASCII 大小写无关聚合。
 - 直方图按本地时间分 24 个桶，时间字段无法解析的记录单独计数，不当成 0 点；峰值并列时取较小的小时。
 
+### HTML 报告
+
+菜单 10 或 `--html <路径>` 生成**单文件**报告：CSS 内嵌、无外部资源、无 JavaScript，双击就能打开，也能直接发给别人。
+
+```powershell
+.\LogGuard.exe --file Security.evtx --html report.html
+.\LogGuard.exe --file Security.evtx --filter failed --html failed.html
+```
+
+内容：汇总行（总数 / 事件种类 / 时间解析情况）、事件分布横条、Top 源 IP、Top 用户名、
+按小时柱状图（峰值标红）、记录明细表（本次读到的全部样本，最多 1024 行）。
+页面跟随系统深色模式；日志里的 `<` `&` `"` 等字符会转义，不会破坏页面结构。
+
 ### 命令行批处理
 
 不进入菜单，执行完直接退出，适合脚本、批量分析和 CI：
@@ -70,11 +84,12 @@
 | `--limit <条数>` | 最多读取多少条，1–1024，默认按规则 |
 | `--export <路径>` | 把结果导出为 CSV（支持中文路径） |
 | `--stats` | 输出统计面板；可与 `--filter` 组合，与 `--export` 同用时导出统计所依据的原始记录 |
+| `--html <路径>` | 生成单文件 HTML 报告（支持中文路径）；可与 `--filter`、`--stats` 组合 |
 | `--no-color` | 关闭 ANSI 颜色 |
 | `-h, --help` | 显示帮助 |
 | `-V, --version` | 显示版本号 |
 
-退出码：`0` 成功，`1` 参数错误，`2` 读取失败，`3` 导出失败。
+退出码：`0` 成功，`1` 参数错误，`2` 读取失败，`3` 写文件失败（CSV / HTML）。
 
 ---
 
@@ -82,7 +97,7 @@
 
 ```text
 LogGuard/
-├── CMakeLists.txt          # 构建 LogGuard 与 4 个测试目标
+├── CMakeLists.txt          # 构建 LogGuard 与 5 个测试目标
 ├── README.md
 ├── CHANGELOG.md
 ├── LICENSE                 # MIT
@@ -95,6 +110,7 @@ LogGuard/
 │   ├── xml_parser.h        # 从事件 XML 中提取字段
 │   ├── filter.h            # 筛选谓词与 FilterFunc
 │   ├── stats.h             # 统计面板的数据结构与聚合接口
+│   ├── report.h            # HTML 报告接口（ReportMeta / Report_WriteHtml）
 │   ├── export.h            # CSV 导出接口
 │   ├── cli.h               # 命令行参数解析
 │   ├── version.h           # 版本号
@@ -106,6 +122,7 @@ LogGuard/
 │   ├── xml_parser.c        # 解析 <Data>、<EventID>、时间字段
 │   ├── filter.c            # 7 个过滤函数 + 小时/账户名公共解析
 │   ├── stats.c             # 事件分布、Top 排名、按小时直方图
+│   ├── report.c            # 单文件 HTML 报告（内嵌 CSS、转义、柱状图）
 │   ├── export.c            # CSV 写入（BOM、转义、公式注入防护）
 │   ├── cli.c               # 参数解析、帮助文本
 │   └── ui.c                # 菜单、表头、单条打印、统计面板
@@ -114,6 +131,7 @@ LogGuard/
     ├── test_filter.c       # 过滤器单元测试
     ├── test_cli.c          # 命令行参数解析测试
     ├── test_stats.c        # 统计聚合测试
+    ├── test_report.c       # HTML 报告测试（转义、结构、空样本）
     └── test_xml.c          # XML 解析器测试
 ```
 
@@ -152,11 +170,11 @@ cmake --build build --config Release
 ```powershell
 windres app.rc -o app.o
 gcc -std=c99 -Wall -Wextra -Iinclude `
-  src\main.c src\log_reader.c src\xml_parser.c src\filter.c src\ui.c src\stats.c src\export.c src\cli.c `
+  src\main.c src\log_reader.c src\xml_parser.c src\filter.c src\ui.c src\stats.c src\report.c src\export.c src\cli.c `
   app.o -o LogGuard.exe -lwevtapi -lshell32
 ```
 
-> `export.c`、`cli.c`、`stats.c` 都是必需源文件；`shell32` 用于 `CommandLineToArgvW`。
+> `export.c`、`cli.c`、`stats.c`、`report.c` 都是必需源文件；`shell32` 用于 `CommandLineToArgvW`。
 
 ### 单元测试
 
@@ -165,11 +183,13 @@ gcc -std=c99 -Wall -Wextra -Iinclude tests\test_filter.c src\filter.c -o test_fi
 gcc -std=c99 -Wall -Wextra -Iinclude tests\test_cli.c src\cli.c -o test_cli.exe
 gcc -std=c99 -Wall -Wextra -Iinclude tests\test_xml.c src\xml_parser.c -o test_xml.exe
 gcc -std=c99 -Wall -Wextra -Iinclude tests\test_stats.c src\stats.c src\filter.c -o test_stats.exe
+gcc -std=c99 -Wall -Wextra -Iinclude tests\test_report.c src\report.c src\stats.c src\filter.c -o test_report.exe
 ```
 
-共 198 条断言（47 filter + 56 cli + 27 xml + 68 stats）。覆盖：7 个过滤器与边界、
+共 245 条断言（47 filter + 65 cli + 27 xml + 73 stats + 33 report）。覆盖：7 个过滤器与边界、
 命令行参数、XML 字段解析（含 `<EventID Qualifiers="...">` 兼容与 UTF-8 截断）、
-统计聚合（排序、并列、Top 上限、`-` 排除、账户大小写聚合、时间解析失败）。
+统计聚合（排序、并列、Top 上限、`-` 排除、账户大小写聚合、时间解析失败）、
+HTML 报告（结构完整、深色模式、脚本注入被转义、空样本）。
 
 ---
 
@@ -182,6 +202,7 @@ gcc -std=c99 -Wall -Wextra -Iinclude tests\test_stats.c src\stats.c src\filter.c
 ```
 
 菜单 8 可以输入 `.evtx` 文件路径切换数据源；输入 `-` 切回本机 Security。
+菜单 9 打印统计面板，菜单 10 在当前目录生成 `LogGuard_Report.html`。
 
 ### 离线分析
 
@@ -190,6 +211,7 @@ gcc -std=c99 -Wall -Wextra -Iinclude tests\test_stats.c src\stats.c src\filter.c
 ```powershell
 wevtutil epl Security Security.evtx
 .\LogGuard.exe --file Security.evtx --filter failed --limit 200
+.\LogGuard.exe --file Security.evtx --html Security-report.html
 ```
 
 ### 非管理员时的提示
@@ -251,6 +273,10 @@ XPath 示例：
   Windows 错误码与系统描述。
 - **统计与界面分离**：`stats.c` 只接收 `LogEntry` 数组、返回 `StatsSummary`，不依赖 Win32，
   排序与聚合规则因此在 `test_stats.c` 里可以直接断言；排版留在 `ui.c`。
+- **报告即数据**：`report.c` 只往 `FILE*` 写 HTML，不碰 Win32 文件 API；打开文件的逻辑留在
+  `main.c`（宽字符路径），于是报告内容可以在 `test_report.c` 里用 `tmpfile()` 断言。
+- **HTML 安全**：所有日志字段经 `& < > " '` 转义后再进页面；报告不引用任何外部脚本或样式，
+  即使日志里有 `<script>` 也只会显示成文本。
 
 ---
 
@@ -262,6 +288,7 @@ XPath 示例：
 - `.evtx` 中缺少 `TargetUserName` / `IpAddress` 等字段的事件，对应列会为空。
 - `--limit` 上限 1024，受内存中的日志数组限制。
 - 统计面板的样本同样最多 1024 条；直方图按本地时间，时间字段格式异常时不计入。
+- HTML 报告同样最多 1024 行明细；图表是纯 CSS，没有交互筛选和导出图片。
 - 事件分布的中文名只覆盖 4624/4625/4672/4720，其余 EventID 显示为“其它”。
 - 路径上限 511 个宽字符。
 - CSV 防公式注入会给以 `=`、`+`、`-`、`@` 开头的字段加 `'` 前缀（单独的 `-` 除外）。
