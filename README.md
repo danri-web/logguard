@@ -224,6 +224,9 @@ wevtutil epl Security Security.evtx
 .\LogGuard.exe --file Security.evtx --html Security-report.html
 ```
 
+> `wevtutil epl` **不会自动建目录**：目标路径的父目录必须已存在，否则报
+> `The system cannot find the path specified`。也可以直接导到当前目录（如上）。
+
 ### 非管理员时的提示
 
 读取本机 Security 会失败，程序会显示真实错误码，例如：
