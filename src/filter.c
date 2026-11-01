@@ -73,6 +73,11 @@ int Filter_AccountCreated(const LogEntry *log) {
     return log->eventId == 4720;
 }
 
+int Filter_SecurityEvent(const LogEntry *log) {
+    return log->eventId == 4624 || log->eventId == 4625 ||
+           log->eventId == 4672 || log->eventId == 4720;
+}
+
 /* 聚合统计前判断源 IP 是否可用：空串和 "-" 都不代表真实来源 */
 int Filter_HasSourceIp(const char *ip) {
     return ip != NULL && ip[0] != '\0' && strcmp(ip, "-") != 0;

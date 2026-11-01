@@ -21,6 +21,7 @@ Makefile
 # 运行时导出的报告
 LogGuard_Report.csv
 LogGuard_Report.html
+/*.html
 
 # 测试用的临时文件（test_report 正常跑完会自己删）
 _test_report.tmp.html

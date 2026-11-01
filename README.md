@@ -26,6 +26,7 @@
 | 8 | 切换数据源 | 在本机 Security 通道与 `.evtx` 文件之间切换 |
 | 9 | 统计面板 | 事件分布、Top 源 IP、Top 用户名、按小时直方图 |
 | 10 | 导出 HTML 报告 | 单文件（内嵌 CSS），统计图 + 记录明细 |
+| 11 | 安全事件总览 | 只取 4624 / 4625 / 4672 / 4720 四类审计事件 |
 
 每条记录展示：EventId、时间、用户名、LogonType、描述、源 IP、进程名。
 查询结束后可选择导出 CSV（带 UTF-8 BOM，Excel 直接打开不乱码）。
@@ -50,6 +51,9 @@
 
 - 样本是当前数据源读到的记录（受 `--limit` / 菜单默认条数限制，最多 1024 条）。
 - 不带 `--filter` 时读全部事件（XPath `*`），所以分布里会出现 4624/4625/4672/4720 以外的事件 ID；带 `--filter` 时只统计该规则命中的记录。
+- 只想要安全事件：加 `--filter security`（= 4624/4625/4672/4720 四类），菜单 11 同效。
+  如果文件其实不是 Security 通道，统计面板会提示「样本里四类事件不足一半」，因为
+  Application/System 里存在同号事件（如 EventSystem 的 4625）。
 - 事件分布按次数降序，次数相同按 EventID 升序；只展开前 8 种，其余合并成一行。
 - 源 IP 排除空串与 `-`（本机登录等没有来源的场景）；用户名去掉 `DOMAIN\` 前缀，并按 ASCII 大小写无关聚合。
 - 直方图按本地时间分 24 个桶，时间字段无法解析的记录单独计数，不当成 0 点；峰值并列时取较小的小时。
@@ -80,7 +84,7 @@
 | 选项 | 说明 |
 |---|---|
 | `--file <路径>` | 分析 `.evtx` 文件；不指定则读本机 Security 通道 |
-| `--filter <规则>` | `all` `failed` `admin` `brute` `night` `privilege` `created`，也可写菜单编号 `1-7` |
+| `--filter <规则>` | `all` `failed` `admin` `brute` `night` `privilege` `created` `security`，也可写规则编号 `1-7`；`security` = 四类审计事件 |
 | `--limit <条数>` | 最多读取多少条，1–1024，默认按规则 |
 | `--export <路径>` | 把结果导出为 CSV（支持中文路径） |
 | `--stats` | 输出统计面板；可与 `--filter` 组合，与 `--export` 同用时导出统计所依据的原始记录 |
@@ -186,7 +190,7 @@ gcc -std=c99 -Wall -Wextra -Iinclude tests\test_stats.c src\stats.c src\filter.c
 gcc -std=c99 -Wall -Wextra -Iinclude tests\test_report.c src\report.c src\stats.c src\filter.c -o test_report.exe
 ```
 
-共 245 条断言（47 filter + 65 cli + 27 xml + 73 stats + 33 report）。覆盖：7 个过滤器与边界、
+共 254 条断言（53 filter + 68 cli + 27 xml + 73 stats + 33 report）。覆盖：8 个过滤器与边界、
 命令行参数、XML 字段解析（含 `<EventID Qualifiers="...">` 兼容与 UTF-8 截断）、
 统计聚合（排序、并列、Top 上限、`-` 排除、账户大小写聚合、时间解析失败）、
 HTML 报告（结构完整、深色模式、脚本注入被转义、空样本）。
@@ -296,6 +300,9 @@ XPath 示例：
 - 统计面板的样本同样最多 1024 条；直方图按本地时间，时间字段格式异常时不计入。
 - HTML 报告同样最多 1024 行明细；图表是纯 CSS，没有交互筛选和导出图片。
 - 事件分布的中文名只覆盖 4624/4625/4672/4720，其余 EventID 显示为“其它”。
+- 事件只按 EventID 判定，不校验 Provider/Channel：Application、System 里存在同号事件
+  （例如 EventSystem 的 4625），`--filter security` 在非 Security 日志上也可能误收；
+  要严格的安全日志请分析管理员导出的 `Security.evtx`。
 - 路径上限 511 个宽字符。
 - CSV 防公式注入会给以 `=`、`+`、`-`、`@` 开头的字段加 `'` 前缀（单独的 `-` 除外）。
 

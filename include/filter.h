@@ -14,6 +14,12 @@ int Filter_Privilege(const LogEntry *log);
 int Filter_AccountCreated(const LogEntry *log);
 
 /*
+ * 四类安全审计事件：4624 登录成功 / 4625 登录失败 / 4672 特权分配 / 4720 创建账户。
+ * 只按 EventID 判断，不校验 Provider —— 见 README「已知限制」。
+ */
+int Filter_SecurityEvent(const LogEntry *log);
+
+/*
  * 判断源 IP 是否可用于聚合统计。
  * 空串和 "-"（Windows 对本机登录/无来源时的占位值）返回 0，其余返回 1。
  */

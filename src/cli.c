@@ -19,7 +19,8 @@ static const FilterName kFilterNames[] = {
     {L"brute",     "brute",     4},
     {L"night",     "night",     5},
     {L"privilege", "privilege", 6},
-    {L"created",   "created",   7}
+    {L"created",   "created",   7},
+    {L"security",  "security", 11}
 };
 
 static int WcsEqual(const wchar_t *a, const wchar_t *b)
@@ -174,8 +175,8 @@ void Cli_PrintUsage(void)
     printf("  LogGuard.exe [选项]             批处理模式，执行完直接退出\n\n");
     printf("选项：\n");
     printf("  --file <路径>      分析 .evtx 文件（不指定则读本机 Security 通道）\n");
-    printf("  --filter <规则>    all | failed | admin | brute | night | privilege | created\n");
-    printf("                     也可以直接写菜单编号 1-7\n");
+    printf("  --filter <规则>    all | failed | admin | brute | night | privilege | created | security\n");
+    printf("                     也可以直接写规则编号 1-7；security = 4624/4625/4672/4720 四类\n");
     printf("  --limit <条数>      最多读取多少条，1-1024（默认按规则）\n");
     printf("  --export <路径>     把结果导出为 CSV 文件\n");
     printf("  --stats             输出统计面板（事件分布 / Top 源 IP / Top 用户名 / 按小时）\n");
@@ -188,6 +189,7 @@ void Cli_PrintUsage(void)
     printf("  LogGuard.exe --file logs\\Security.evtx --filter failed --limit 200\n");
     printf("  LogGuard.exe --file Security.evtx --filter brute --export report.csv\n");
     printf("  LogGuard.exe --file Security.evtx --stats\n");
+    printf("  LogGuard.exe --file Security.evtx --stats --filter security\n");
     printf("  LogGuard.exe --file Security.evtx --html report.html\n");
     printf("  LogGuard.exe --file Security.evtx --filter 6 --no-color\n");
 }

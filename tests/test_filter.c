@@ -146,6 +146,20 @@ int main(void)
     CHECK_EQ(1, Filter_HasSourceIp("192.168.1.5"), "Filter_HasSourceIp: IPv4 可聚合");
     CHECK_EQ(1, Filter_HasSourceIp("::1"), "Filter_HasSourceIp: IPv6 可聚合");
 
+    /* ---------------- Filter_SecurityEvent：四类审计事件 ---------------- */
+    log = MakeLog(4624, "u", "2026/10/28-10:00:00", "1.1.1.1");
+    CHECK_EQ(1, Filter_SecurityEvent(&log), "Filter_SecurityEvent: 4624 命中");
+    log.eventId = 4625;
+    CHECK_EQ(1, Filter_SecurityEvent(&log), "Filter_SecurityEvent: 4625 命中");
+    log.eventId = 4672;
+    CHECK_EQ(1, Filter_SecurityEvent(&log), "Filter_SecurityEvent: 4672 命中");
+    log.eventId = 4720;
+    CHECK_EQ(1, Filter_SecurityEvent(&log), "Filter_SecurityEvent: 4720 命中");
+    log.eventId = 4634;
+    CHECK_EQ(0, Filter_SecurityEvent(&log), "Filter_SecurityEvent: 4634 注销不命中");
+    log.eventId = 1000;
+    CHECK_EQ(0, Filter_SecurityEvent(&log), "Filter_SecurityEvent: Application 的 1000 不命中");
+
     /* ---------------- Filter_AccountName：统计面板与 admin 过滤共用 ---------------- */
     CHECK_EQ(0, strcmp(Filter_AccountName("DOMAIN\\admin"), "admin"),
              "Filter_AccountName: 去掉域前缀");

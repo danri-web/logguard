@@ -110,6 +110,19 @@ static void TestFilters(void)
         CHECK(Cli_Parse(3, argv, &opt) == -1, "--filter 未知值报错");
         CHECK(opt.error != NULL, "--filter 未知值有错误文本");
     }
+    {
+        wchar_t *argv[] = { L"LogGuard.exe", L"--filter", L"security" };
+        CHECK(Cli_Parse(3, argv, &opt) == 0 && opt.filterId == 11, "--filter security -> 11");
+    }
+    {
+        wchar_t *argv[] = { L"LogGuard.exe", L"--filter", L"SECURITY" };
+        CHECK(Cli_Parse(3, argv, &opt) == 0 && opt.filterId == 11, "--filter security 大小写不敏感");
+    }
+    {
+        wchar_t *argv[] = { L"LogGuard.exe", L"--stats", L"--filter", L"security" };
+        CHECK(Cli_Parse(4, argv, &opt) == 0 && opt.stats == 1 && opt.filterId == 11,
+              "--stats 可与 security 组合");
+    }
 }
 
 static void TestLimit(void)

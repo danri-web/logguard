@@ -24,9 +24,10 @@
 /* 命令行文件路径上限（宽字符数） */
 #define LOGUARD_PATH_MAX 512
 
-/* 菜单里的统计面板 / HTML 报告编号：都不按 EventID 收窄 */
-#define MENU_ID_STATS  9
-#define MENU_ID_REPORT 10
+/* 菜单里的统计面板 / HTML 报告 / 安全事件编号：都不按单条规则收窄 */
+#define MENU_ID_STATS    9
+#define MENU_ID_REPORT   10
+#define MENU_ID_SECURITY 11
 
 /* 一次查询的输出选项（批处理与交互共用） */
 typedef struct {
@@ -56,7 +57,8 @@ static const MenuItem g_menuList[] = {
     {7, "隐蔽后门账号监控", "监控 4720 创建账户事件 (防留后门)", 100, 0},
     {8, "切换数据源（本机 / .evtx 文件）", "分析导出的 .evtx 文件，或切回本机 Security", 0, 0},
     {9, "统计面板", "事件分布 / Top 源 IP / Top 用户名 / 按小时直方图", 500, 0},
-    {10, "导出 HTML 报告", "单文件（内嵌 CSS），统计图 + 记录明细", 500, 0}
+    {10, "导出 HTML 报告", "单文件（内嵌 CSS），统计图 + 记录明细", 500, 0},
+    {11, "安全事件总览", "只取 4624/4625/4672/4720 四类审计事件", 500, 0}
 };
 static const int g_menuSize = sizeof(g_menuList) / sizeof(g_menuList[0]);
 
@@ -130,6 +132,7 @@ static FilterFunc GetFilterFunc(int option) {
         case 5: return Filter_NightLogin;
         case 6: return Filter_Privilege;
         case 7: return Filter_AccountCreated;
+        case MENU_ID_SECURITY: return Filter_SecurityEvent;
         default: return Filter_All;
     }
 }
@@ -141,6 +144,10 @@ static const wchar_t *XpathForId(int id)
     if (id == 7) return L"*[System[(EventID=4720)]]";
     /* 统计面板与 HTML 报告看数据源里的事件全貌，不按 EventID 收窄 */
     if (id == MENU_ID_STATS || id == MENU_ID_REPORT) return L"*";
+    /* 安全事件总览：只取四类审计事件，Application/System 里的同号事件也会被排除 */
+    if (id == MENU_ID_SECURITY) {
+        return L"*[System[(EventID=4624 or EventID=4625 or EventID=4672 or EventID=4720)]]";
+    }
     return L"*[System[(EventID=4624 or EventID=4625)]]";
 }
 
@@ -433,6 +440,32 @@ static int ExecuteQuery(const MenuItem *item, const wchar_t *target, int isFile,
         if (Stats_Compute(g_logs, g_logCount, &summary) != 0) {
             PrintError("统计失败：内存不足。");
             return 1;
+        }
+
+        /*
+         * 看全部事件时顺手做个数据体检：样本里几乎没有四类审计事件，
+         * 多半是把 Application/System 日志当成 Security 了（事件 ID 会撞号）。
+         */
+        if (item->id == MENU_ID_STATS || item->id == MENU_ID_REPORT) {
+            int i;
+            int securityCount = 0;
+
+            for (i = 0; i < summary.eventKindCount; i++) {
+                int id = summary.events[i].eventId;
+                if (id == 4624 || id == 4625 || id == 4672 || id == 4720) {
+                    securityCount += summary.events[i].count;
+                }
+            }
+            if (securityCount * 2 < summary.total) {
+                char note[512];
+                snprintf(note, sizeof(note),
+                         "提示：样本里只有 %d 条（%.1f%%）属于 4624/4625/4672/4720。\n"
+                         "         这个文件可能不是 Security 通道，Application/System 的同号事件会被算进来。\n"
+                         "         只看安全事件请加 --filter security，或从管理员终端导出 Security。",
+                         securityCount,
+                         (double)securityCount * 100.0 / (double)summary.total);
+                PrintInfo(note);
+            }
         }
 
         if (out->statsMode) {

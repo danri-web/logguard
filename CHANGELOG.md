@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.2.3] - 2026-11-01
+
+### Added
+
+- 「安全事件总览」（菜单 11 / `--filter security`）：只统计 / 只列出
+  4624 登录成功、4625 登录失败、4672 特权分配、4720 创建账户四类审计事件。
+- 统计面板与 HTML 报告在「看全部事件」时做数据体检：样本里四类事件不足一半会提示
+  “这个文件可能不是 Security 通道”，并给出 `--filter security` 建议。
+
+### Notes
+
+- `security` 只按 EventID 匹配，不校验 Provider：Application/System 通道里存在同号事件
+  （例如 EventSystem 的 4625），要得到严格的安全日志请分析管理员导出的 `Security.evtx`。
+
 ## [3.2.2] - 2026-11-01
 
 ### Fixed
