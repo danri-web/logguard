@@ -144,6 +144,28 @@ int main(void)
     CHECK_EQ(1, Filter_HasSourceIp("192.168.1.5"), "Filter_HasSourceIp: IPv4 可聚合");
     CHECK_EQ(1, Filter_HasSourceIp("::1"), "Filter_HasSourceIp: IPv6 可聚合");
 
+    /* ---------------- Filter_AccountName：统计面板与 admin 过滤共用 ---------------- */
+    CHECK_EQ(0, strcmp(Filter_AccountName("DOMAIN\\admin"), "admin"),
+             "Filter_AccountName: 去掉域前缀");
+    CHECK_EQ(0, strcmp(Filter_AccountName("admin"), "admin"),
+             "Filter_AccountName: 无域前缀原样返回");
+    CHECK_EQ(0, strcmp(Filter_AccountName("a\\b\\c"), "c"),
+             "Filter_AccountName: 取最后一个反斜杠之后");
+    CHECK_EQ(0, strcmp(Filter_AccountName(""), ""),
+             "Filter_AccountName: 空串安全");
+    CHECK_EQ(0, strcmp(Filter_AccountName(NULL), ""),
+             "Filter_AccountName: NULL 安全");
+
+    /* ---------------- Filter_ParseHour：统计直方图与凌晨检测共用 ---------------- */
+    CHECK_EQ(10, Filter_ParseHour("2026/10/28-10:00:00"), "Filter_ParseHour: 10 点");
+    CHECK_EQ(0, Filter_ParseHour("2026/10/28-00:00:00"), "Filter_ParseHour: 0 点");
+    CHECK_EQ(23, Filter_ParseHour("2026/10/28-23:59:59"), "Filter_ParseHour: 23 点");
+    CHECK_EQ(-1, Filter_ParseHour(""), "Filter_ParseHour: 空串返回 -1");
+    CHECK_EQ(-1, Filter_ParseHour(NULL), "Filter_ParseHour: NULL 返回 -1");
+    CHECK_EQ(-1, Filter_ParseHour("2026/10/28"), "Filter_ParseHour: 缺小时返回 -1");
+    CHECK_EQ(-1, Filter_ParseHour("2026/10/28/03:15:00"), "Filter_ParseHour: 分隔符错误返回 -1");
+    CHECK_EQ(-1, Filter_ParseHour("2026/10/28-xx:00:00"), "Filter_ParseHour: 非数字返回 -1");
+
     printf("\n%d checks, %d failed.\n", g_total, g_failed);
     if (g_failed == 0) {
         printf("All filter tests passed!\n");

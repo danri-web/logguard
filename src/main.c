@@ -9,6 +9,7 @@
 #include "log_reader.h"
 #include "filter.h"
 #include "ui.h"
+#include "stats.h"
 #include "export.h"
 #include "cli.h"
 #include "version.h"
@@ -20,6 +21,9 @@
 
 /* 命令行文件路径上限（宽字符数） */
 #define LOGUARD_PATH_MAX 512
+
+/* 菜单里的统计面板编号：不看具体 EventID，输出数据总览 */
+#define MENU_ID_STATS 9
 
 static LogEntry g_logs[LOG_MAX_COUNT];
 static int      g_logCount = 0;
@@ -39,7 +43,8 @@ static const MenuItem g_menuList[] = {
     {5, "凌晨异常登录检测", "筛选 00:00-05:59 之间的 4624 成功登录记录", 500, 0},
     {6, "系统特权分配监控", "监控 4672 特权分配事件 (防提权)", 100, 0},
     {7, "隐蔽后门账号监控", "监控 4720 创建账户事件 (防留后门)", 100, 0},
-    {8, "切换数据源（本机 / .evtx 文件）", "分析导出的 .evtx 文件，或切回本机 Security", 0, 0}
+    {8, "切换数据源（本机 / .evtx 文件）", "分析导出的 .evtx 文件，或切回本机 Security", 0, 0},
+    {9, "统计面板", "事件分布 / Top 源 IP / Top 用户名 / 按小时直方图", 500, 0}
 };
 static const int g_menuSize = sizeof(g_menuList) / sizeof(g_menuList[0]);
 
@@ -122,6 +127,8 @@ static const wchar_t *XpathForId(int id)
 {
     if (id == 6) return L"*[System[(EventID=4672)]]";
     if (id == 7) return L"*[System[(EventID=4720)]]";
+    /* 统计面板看数据源里的事件全貌，不按 EventID 收窄 */
+    if (id == MENU_ID_STATS) return L"*";
     return L"*[System[(EventID=4624 or EventID=4625)]]";
 }
 
@@ -298,12 +305,31 @@ static void AskAndExport(const LogEntry *matchedLogs, int count)
     }
 }
 
+/* 导出 CSV 并打印结果；返回 0 成功，3 失败（与退出码一致） */
+static int ExportAndReport(const LogEntry *logs, int count, const wchar_t *path)
+{
+    char exportUtf8[LOGUARD_PATH_MAX * 4] = {0};
+    int exported;
+
+    WideToUtf8(path, exportUtf8, sizeof(exportUtf8));
+    exported = ExportToCsv(logs, count, path);
+    if (exported > 0) {
+        printf("  %s>> 成功导出 %d 条记录至文件: %s%s\n",
+               AnsiGreen(), exported, exportUtf8, AnsiReset());
+        return 0;
+    }
+    PrintError("导出失败，请检查路径和文件写入权限。");
+    return 3;
+}
+
 /*
- * 执行一次查询：读日志 -> 过滤/聚合 -> 打印 -> 可选导出。
+ * 执行一次查询：读日志 -> 过滤/聚合/统计 -> 打印 -> 可选导出。
+ * statsMode 为 1 时不逐条打印，改为输出统计面板；导出仍是原始记录。
  * 返回 0 成功，1 内存错误，2 读取失败，3 导出失败。
  */
 static int ExecuteQuery(const MenuItem *item, const wchar_t *target, int isFile,
-                        int maxRead, const wchar_t *exportPath, int askExport)
+                        int maxRead, const wchar_t *exportPath, int askExport,
+                        int statsMode)
 {
     wchar_t errBuf[256] = {0};
     LogEntry *matched;
@@ -335,11 +361,29 @@ static int ExecuteQuery(const MenuItem *item, const wchar_t *target, int isFile,
         return 2;
     }
 
-    PrintHeader(item);
+    if (!statsMode) PrintHeader(item);
 
     if (g_logCount == 0) {
         PrintInfo(isFile ? "文件中没有读取到日志记录。" : "没有读取到任何日志记录。");
         return 0;
+    }
+
+    if (statsMode) {
+        char desc[LOGUARD_PATH_MAX * 4 + 16];
+        StatsSummary summary;
+        const char *panelTitle = (item->id == MENU_ID_STATS) ? "数据总览" : item->name;
+
+        if (Stats_Compute(g_logs, g_logCount, &summary) != 0) {
+            PrintError("统计失败：内存不足。");
+            return 1;
+        }
+        DescribeSource(target, isFile, desc, sizeof(desc));
+        PrintStatsPanel(&summary, panelTitle, desc);
+
+        if (exportPath != NULL) {
+            rc = ExportAndReport(g_logs, g_logCount, exportPath);
+        }
+        return rc;
     }
 
     matched = (LogEntry *)malloc(sizeof(LogEntry) * (size_t)g_logCount);
@@ -373,16 +417,7 @@ static int ExecuteQuery(const MenuItem *item, const wchar_t *target, int isFile,
         PrintFooter(item, count);
 
         if (exportPath != NULL) {
-            char exportUtf8[LOGUARD_PATH_MAX * 4] = {0};
-            int exported = ExportToCsv(matched, count, exportPath);
-            WideToUtf8(exportPath, exportUtf8, sizeof(exportUtf8));
-            if (exported > 0) {
-                printf("  %s>> 成功导出 %d 条记录至文件: %s%s\n",
-                       AnsiGreen(), exported, exportUtf8, AnsiReset());
-            } else {
-                PrintError("导出失败，请检查路径和文件写入权限。");
-                rc = 3;
-            }
+            rc = ExportAndReport(matched, count, exportPath);
         } else if (askExport) {
             AskAndExport(matched, count);
         }
@@ -397,18 +432,29 @@ static void RunQuery(const MenuItem *item)
 {
     const wchar_t *target = g_sourcePath[0] != L'\0' ? g_sourcePath : L"Security";
     int isFile = g_sourcePath[0] != L'\0';
-    ExecuteQuery(item, target, isFile, item->maxRead, NULL, 1);
+    int statsMode = (item->id == MENU_ID_STATS);
+
+    ExecuteQuery(item, target, isFile, item->maxRead, NULL,
+                 statsMode ? 0 : 1, statsMode);
 }
 
 /* 批处理模式：一条命令完成查询和导出 */
 static int RunBatch(const CliOptions *opt)
 {
-    int filterId = opt->filterId > 0 ? opt->filterId : 1;
-    const MenuItem *item = FindMenuItem(filterId);
+    int filterId;
+    const MenuItem *item;
     const wchar_t *target;
     int isFile;
     int limit;
     char desc[LOGUARD_PATH_MAX * 4 + 16];
+
+    if (opt->stats) {
+        /* --stats 默认看全部事件；带了 --filter 就只统计该规则命中的样本 */
+        filterId = opt->filterId > 0 ? opt->filterId : MENU_ID_STATS;
+    } else {
+        filterId = opt->filterId > 0 ? opt->filterId : 1;
+    }
+    item = FindMenuItem(filterId);
 
     if (!item) {
         fprintf(stderr, "错误：未知的过滤规则。\n");
@@ -434,7 +480,7 @@ static int RunBatch(const CliOptions *opt)
     }
 
     return ExecuteQuery(item, target, isFile, limit,
-                        opt->hasExport ? opt->exportPath : NULL, 0);
+                        opt->hasExport ? opt->exportPath : NULL, 0, opt->stats);
 }
 
 static int RunInteractive(void)

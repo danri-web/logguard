@@ -1,5 +1,23 @@
 # Changelog
 
+## [3.1.0] - 2026-11-01
+
+### Added
+
+- 统计面板（菜单 9 / `--stats`）：事件分布、Top 源 IP（前 5）、Top 用户名（前 5）、
+  按小时直方图（24 桶），并标出峰值小时。
+- `src/stats.c` + `include/stats.h`：纯 C99 聚合层，只吃 `LogEntry` 数组，不依赖 Win32；
+  `tests/test_stats.c`（68 条断言）覆盖排序、并列、Top 上限、`-` 排除、账户大小写聚合、
+  时间解析失败与输入不被修改。
+- `filter.c` 公开 `Filter_ParseHour` / `Filter_AccountName`，供筛选与统计共用，
+  避免两处各写一份小时/账户名解析。
+
+### Changed
+
+- `ExecuteQuery` 增加 `statsMode` 参数；统计模式下打印面板而不是逐条记录，
+  导出仍然是统计所依据的原始记录。
+- 统计默认读取全部事件（XPath `*`），带 `--filter` 时只统计该规则命中的记录。
+
 ## [3.0.0] - 2026-10-28
 
 ### Added

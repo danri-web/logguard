@@ -3,9 +3,11 @@
 #include "filter.h"
 
 /* 取账户名的本地部分：DOMAIN\admin -> admin；无域前缀时原样返回 */
-static const char *AccountNamePart(const char *name)
+const char *Filter_AccountName(const char *name)
 {
-    const char *slash = strrchr(name, '\\');
+    const char *slash;
+    if (name == NULL) return "";
+    slash = strrchr(name, '\\');
     return slash ? slash + 1 : name;
 }
 
@@ -28,7 +30,7 @@ static int EqualsIgnoreCase(const char *a, const char *b)
  * 从 "YYYY/MM/DD-HH:MM:SS" 中取出小时。
  * 解析失败返回 -1 —— 调用方必须把失败和「0 点」区分开，否则会误报。
  */
-static int ParseHour(const char *dateAndTime)
+int Filter_ParseHour(const char *dateAndTime)
 {
     if (dateAndTime == NULL || strlen(dateAndTime) < 14) return -1;
     if (dateAndTime[10] != '-' || dateAndTime[13] != ':') return -1;
@@ -45,7 +47,7 @@ int Filter_FailedLogin(const LogEntry *log) {
 
 int Filter_AdminFailed(const LogEntry *log) {
     if (log->eventId != 4625) return 0;
-    return EqualsIgnoreCase(AccountNamePart(log->userName), "admin");
+    return EqualsIgnoreCase(Filter_AccountName(log->userName), "admin");
 }
 
 int Filter_BruteForce(const LogEntry *log) {
@@ -56,7 +58,7 @@ int Filter_BruteForce(const LogEntry *log) {
 int Filter_NightLogin(const LogEntry *log) {
     if (log->eventId != 4624) return 0; // 必须是登录成功
 
-    int hour = ParseHour(log->dateAndTime);
+    int hour = Filter_ParseHour(log->dateAndTime);
     if (hour < 0) return 0; // 时间为空/格式异常：不算凌晨，避免误报
 
     // 如果是 0 点到 5 点

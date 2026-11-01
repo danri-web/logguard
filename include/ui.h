@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 #include "log_entry.h"
+#include "stats.h"
 
 /* 声明 MenuItem 结构体 (供 main.c 和 ui.c 共用) */
 typedef struct {
@@ -18,6 +19,8 @@ void PrintMenu(const MenuItem *menu, int menuSize, const char *sourceDesc);
 void PrintHeader(const MenuItem *item);
 void PrintFooter(const MenuItem *item, int count);
 void PrintLogEntry(const LogEntry *log, int index);
+void PrintStatsPanel(const StatsSummary *summary, const char *title,
+                     const char *sourceDesc);
 void PrintWelcome(void);
 int ReadOption(int *option);
 void PrintInfo(const char *msg);

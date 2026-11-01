@@ -49,6 +49,122 @@ void PrintLogEntry(const LogEntry *log, int index)
     printf("+----------------------------------------------------------\n");
 }
 
+/* EventID 对应的中文短名；未收录的 ID 统一显示“其它” */
+static const char *EventShortName(int eventId)
+{
+    switch (eventId) {
+        case 4624: return "登录成功";
+        case 4625: return "登录失败";
+        case 4672: return "特权分配";
+        case 4720: return "创建账户";
+        default:   return "其它";
+    }
+}
+
+/* 用 # 画最多 width 格的横条；非零至少画 1 格 */
+static void PrintBar(int value, int maxValue, int width)
+{
+    int n = 0;
+    int i;
+
+    if (value > 0 && maxValue > 0) {
+        n = (value * width + maxValue - 1) / maxValue; /* 向上取整，小值也看得见 */
+        if (n < 1) n = 1;
+        if (n > width) n = width;
+    }
+    for (i = 0; i < n; i++) putchar('#');
+}
+
+/* 统计面板：事件分布、Top 源 IP、Top 用户名、按小时直方图 */
+void PrintStatsPanel(const StatsSummary *summary, const char *title,
+                     const char *sourceDesc)
+{
+    int i;
+    int maxCount;
+
+    if (summary == NULL) return;
+
+    printf("\n------------------------------------------------------------\n");
+    printf("  统计面板：%s\n", title ? title : "数据总览");
+    printf("------------------------------------------------------------\n");
+    printf("  数据源：%s\n", sourceDesc ? sourceDesc : "-");
+    printf("  样本：共 %d 条记录\n", summary->total);
+
+    /* ---------------- 事件分布 ---------------- */
+    printf("\n  [事件分布]\n");
+    if (summary->eventKindCount == 0) {
+        printf("    （没有事件数据）\n");
+    } else {
+        maxCount = 0;
+        for (i = 0; i < summary->eventKindCount; i++) {
+            if (summary->events[i].count > maxCount) maxCount = summary->events[i].count;
+        }
+        for (i = 0; i < summary->eventKindCount; i++) {
+            double pct = (summary->total > 0)
+                       ? (double)summary->events[i].count * 100.0 / (double)summary->total
+                       : 0.0;
+            printf("    %d  %s  %d 条  %.1f%%  ",
+                   summary->events[i].eventId,
+                   EventShortName(summary->events[i].eventId),
+                   summary->events[i].count, pct);
+            PrintBar(summary->events[i].count, maxCount, 20);
+            printf("\n");
+        }
+        if (summary->otherEventCount > 0) {
+            printf("    其它 EventID 合计 %d 条（明细不展开）\n", summary->otherEventCount);
+        }
+    }
+
+    /* ---------------- Top 源 IP ---------------- */
+    printf("\n  [Top 源 IP]\n");
+    if (summary->ipCount == 0) {
+        printf("    （没有可用源 IP：本机登录或该事件不带 IpAddress）\n");
+    } else {
+        maxCount = summary->ips[0].count;
+        for (i = 0; i < summary->ipCount; i++) {
+            printf("    %d. %s  %d 次  ", i + 1, summary->ips[i].label,
+                   summary->ips[i].count);
+            PrintBar(summary->ips[i].count, maxCount, 24);
+            printf("\n");
+        }
+    }
+
+    /* ---------------- Top 用户名 ---------------- */
+    printf("\n  [Top 用户名]\n");
+    if (summary->userCount == 0) {
+        printf("    （没有可用用户名）\n");
+    } else {
+        maxCount = summary->users[0].count;
+        for (i = 0; i < summary->userCount; i++) {
+            printf("    %d. %s  %d 次  ", i + 1, summary->users[i].label,
+                   summary->users[i].count);
+            PrintBar(summary->users[i].count, maxCount, 24);
+            printf("\n");
+        }
+    }
+
+    /* ---------------- 按小时直方图 ---------------- */
+    printf("\n  [按小时直方图]\n");
+    if (summary->hourKnown == 0) {
+        printf("    （时间字段缺失或无法解析，直方图跳过）\n");
+    } else {
+        maxCount = 0;
+        for (i = 0; i < STATS_HOURS; i++) {
+            if (summary->hours[i] > maxCount) maxCount = summary->hours[i];
+        }
+        for (i = 0; i < STATS_HOURS; i++) {
+            printf("    %02d 时 | ", i);
+            PrintBar(summary->hours[i], maxCount, 36);
+            printf(" %d", summary->hours[i]);
+            if (i == summary->peakHour) printf("  <- 峰值");
+            printf("\n");
+        }
+        if (summary->hourUnknown > 0) {
+            printf("    另有 %d 条时间无法解析，未计入\n", summary->hourUnknown);
+        }
+    }
+}
+
 void PrintFooter(const MenuItem *item, int count)
 {
     printf("\n  查询完成：%s，共 %d 条记录。\n", item ? item->name : "", count);

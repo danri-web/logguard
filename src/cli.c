@@ -139,6 +139,9 @@ int Cli_Parse(int argc, wchar_t *const *argv, CliOptions *opt)
                 return Fail(opt, "--limit 超出范围（1-1024）");
             }
             opt->batch = 1;
+        } else if (WcsEqual(arg, L"--stats")) {
+            opt->stats = 1;
+            opt->batch = 1;
         } else if (WcsEqual(arg, L"--export")) {
             if (++i >= argc) return Fail(opt, "--export 需要一个 CSV 文件路径");
             if (!CopyPath(opt->exportPath, argv[i])) {
@@ -168,11 +171,14 @@ void Cli_PrintUsage(void)
     printf("                     也可以直接写菜单编号 1-7\n");
     printf("  --limit <条数>      最多读取多少条，1-1024（默认按规则）\n");
     printf("  --export <路径>     把结果导出为 CSV 文件\n");
+    printf("  --stats             输出统计面板（事件分布 / Top 源 IP / Top 用户名 / 按小时）\n");
+    printf("                     可配合 --filter 只统计某类事件；与 --export 同用时导出原始记录\n");
     printf("  --no-color          关闭 ANSI 颜色\n");
     printf("  -h, --help          显示本帮助\n");
     printf("  -V, --version       显示版本号\n\n");
     printf("示例：\n");
     printf("  LogGuard.exe --file logs\\Security.evtx --filter failed --limit 200\n");
     printf("  LogGuard.exe --file Security.evtx --filter brute --export report.csv\n");
+    printf("  LogGuard.exe --file Security.evtx --stats\n");
     printf("  LogGuard.exe --file Security.evtx --filter 6 --no-color\n");
 }

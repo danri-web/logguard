@@ -3,7 +3,7 @@
 基于 Win32 事件日志 API（`winevt`）的 Windows 安全日志分析终端工具，C99 实现，无第三方依赖。
 
 支持两种数据源：**本机 Security 通道**（实时）和 **导出的 `.evtx` 文件**（离线，不需要管理员）。
-交互菜单与命令行批处理两种用法，查询结果可导出为 CSV。
+交互菜单与命令行批处理两种用法，查询结果可导出为 CSV，也可以直接输出统计面板。
 
 > 读取本机 Security 通道需要管理员权限；分析 `.evtx` 文件不需要。
 > 程序以 `asInvoker` 启动，不会强制弹 UAC；在非管理员环境下会给出提示。
@@ -24,9 +24,34 @@
 | 6 | 系统特权分配监控 | `EventID == 4672`（防提权） |
 | 7 | 隐蔽后门账号监控 | `EventID == 4720`（防留后门） |
 | 8 | 切换数据源 | 在本机 Security 通道与 `.evtx` 文件之间切换 |
+| 9 | 统计面板 | 事件分布、Top 源 IP、Top 用户名、按小时直方图 |
 
 每条记录展示：EventId、时间、用户名、LogonType、描述、源 IP、进程名。
 查询结束后可选择导出 CSV（带 UTF-8 BOM，Excel 直接打开不乱码）。
+
+### 统计面板
+
+菜单 9 或 `--stats` 输出数据总览，四块内容：
+
+```text
+  [事件分布]
+    4625  登录失败  5 条  41.7%  ####################
+    4624  登录成功  4 条  33.3%  ################
+  [Top 源 IP]
+    1. 203.0.113.7  3 次  ########################
+  [Top 用户名]
+    1. Danri  5 次  ########################
+  [按小时直方图]
+    02 时 | #################################### 4  <- 峰值
+```
+
+统计口径：
+
+- 样本是当前数据源读到的记录（受 `--limit` / 菜单默认条数限制，最多 1024 条）。
+- 不带 `--filter` 时读全部事件（XPath `*`），所以分布里会出现 4624/4625/4672/4720 以外的事件 ID；带 `--filter` 时只统计该规则命中的记录。
+- 事件分布按次数降序，次数相同按 EventID 升序；只展开前 8 种，其余合并成一行。
+- 源 IP 排除空串与 `-`（本机登录等没有来源的场景）；用户名去掉 `DOMAIN\` 前缀，并按 ASCII 大小写无关聚合。
+- 直方图按本地时间分 24 个桶，时间字段无法解析的记录单独计数，不当成 0 点；峰值并列时取较小的小时。
 
 ### 命令行批处理
 
@@ -35,6 +60,7 @@
 ```powershell
 .\LogGuard.exe --file Security.evtx --filter failed --limit 200
 .\LogGuard.exe --file Security.evtx --filter brute --export report.csv
+.\LogGuard.exe --file Security.evtx --stats
 ```
 
 | 选项 | 说明 |
@@ -43,6 +69,7 @@
 | `--filter <规则>` | `all` `failed` `admin` `brute` `night` `privilege` `created`，也可写菜单编号 `1-7` |
 | `--limit <条数>` | 最多读取多少条，1–1024，默认按规则 |
 | `--export <路径>` | 把结果导出为 CSV（支持中文路径） |
+| `--stats` | 输出统计面板；可与 `--filter` 组合，与 `--export` 同用时导出统计所依据的原始记录 |
 | `--no-color` | 关闭 ANSI 颜色 |
 | `-h, --help` | 显示帮助 |
 | `-V, --version` | 显示版本号 |
@@ -55,7 +82,7 @@
 
 ```text
 LogGuard/
-├── CMakeLists.txt          # 构建 LogGuard 与 3 个测试目标
+├── CMakeLists.txt          # 构建 LogGuard 与 4 个测试目标
 ├── README.md
 ├── CHANGELOG.md
 ├── LICENSE                 # MIT
@@ -67,6 +94,7 @@ LogGuard/
 │   ├── log_reader.h        # 通道 / .evtx 文件读取接口
 │   ├── xml_parser.h        # 从事件 XML 中提取字段
 │   ├── filter.h            # 筛选谓词与 FilterFunc
+│   ├── stats.h             # 统计面板的数据结构与聚合接口
 │   ├── export.h            # CSV 导出接口
 │   ├── cli.h               # 命令行参数解析
 │   ├── version.h           # 版本号
@@ -76,14 +104,16 @@ LogGuard/
 │   ├── main.c              # 双入口（交互 / 批处理）、爆破聚合、调度
 │   ├── log_reader.c        # EvtQuery / EvtNext / EvtRender
 │   ├── xml_parser.c        # 解析 <Data>、<EventID>、时间字段
-│   ├── filter.c            # 7 个过滤函数
+│   ├── filter.c            # 7 个过滤函数 + 小时/账户名公共解析
+│   ├── stats.c             # 事件分布、Top 排名、按小时直方图
 │   ├── export.c            # CSV 写入（BOM、转义、公式注入防护）
 │   ├── cli.c               # 参数解析、帮助文本
-│   └── ui.c                # 菜单、表头、单条打印、汇总
+│   └── ui.c                # 菜单、表头、单条打印、统计面板
 │
 └── tests/
     ├── test_filter.c       # 过滤器单元测试
     ├── test_cli.c          # 命令行参数解析测试
+    ├── test_stats.c        # 统计聚合测试
     └── test_xml.c          # XML 解析器测试
 ```
 
@@ -122,11 +152,11 @@ cmake --build build --config Release
 ```powershell
 windres app.rc -o app.o
 gcc -std=c99 -Wall -Wextra -Iinclude `
-  src\main.c src\log_reader.c src\xml_parser.c src\filter.c src\ui.c src\export.c src\cli.c `
+  src\main.c src\log_reader.c src\xml_parser.c src\filter.c src\ui.c src\stats.c src\export.c src\cli.c `
   app.o -o LogGuard.exe -lwevtapi -lshell32
 ```
 
-> `export.c`、`cli.c` 都是必需源文件；`shell32` 用于 `CommandLineToArgvW`。
+> `export.c`、`cli.c`、`stats.c` 都是必需源文件；`shell32` 用于 `CommandLineToArgvW`。
 
 ### 单元测试
 
@@ -134,9 +164,12 @@ gcc -std=c99 -Wall -Wextra -Iinclude `
 gcc -std=c99 -Wall -Wextra -Iinclude tests\test_filter.c src\filter.c -o test_filter.exe
 gcc -std=c99 -Wall -Wextra -Iinclude tests\test_cli.c src\cli.c -o test_cli.exe
 gcc -std=c99 -Wall -Wextra -Iinclude tests\test_xml.c src\xml_parser.c -o test_xml.exe
+gcc -std=c99 -Wall -Wextra -Iinclude tests\test_stats.c src\stats.c src\filter.c -o test_stats.exe
 ```
 
-覆盖：7 个过滤器与边界、命令行参数、XML 字段解析（含 `<EventID Qualifiers="...">` 兼容与 UTF-8 截断）。
+共 198 条断言（47 filter + 56 cli + 27 xml + 68 stats）。覆盖：7 个过滤器与边界、
+命令行参数、XML 字段解析（含 `<EventID Qualifiers="...">` 兼容与 UTF-8 截断）、
+统计聚合（排序、并列、Top 上限、`-` 排除、账户大小写聚合、时间解析失败）。
 
 ---
 
@@ -216,6 +249,8 @@ XPath 示例：
   写完检查 `ferror`，避免把失败当成功。
 - **权限显式化**：manifest 使用 `asInvoker`，运行期检测是否提升；读取失败显示
   Windows 错误码与系统描述。
+- **统计与界面分离**：`stats.c` 只接收 `LogEntry` 数组、返回 `StatsSummary`，不依赖 Win32，
+  排序与聚合规则因此在 `test_stats.c` 里可以直接断言；排版留在 `ui.c`。
 
 ---
 
@@ -226,6 +261,8 @@ XPath 示例：
 - `description` 为本地生成的简短文本，非 Windows 消息文件原文。
 - `.evtx` 中缺少 `TargetUserName` / `IpAddress` 等字段的事件，对应列会为空。
 - `--limit` 上限 1024，受内存中的日志数组限制。
+- 统计面板的样本同样最多 1024 条；直方图按本地时间，时间字段格式异常时不计入。
+- 事件分布的中文名只覆盖 4624/4625/4672/4720，其余 EventID 显示为“其它”。
 - 路径上限 511 个宽字符。
 - CSV 防公式注入会给以 `=`、`+`、`-`、`@` 开头的字段加 `'` 前缀（单独的 `-` 除外）。
 

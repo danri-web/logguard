@@ -193,6 +193,37 @@ static void TestDefaults(void)
     }
 }
 
+static void TestStats(void)
+{
+    CliOptions opt;
+
+    {
+        wchar_t *argv[] = { L"LogGuard.exe", L"--stats" };
+        CHECK(Cli_Parse(2, argv, &opt) == 0, "解析 --stats 成功");
+        CHECK(opt.stats == 1, "--stats 置位");
+        CHECK(opt.batch == 1, "--stats 进入批处理");
+        CHECK(opt.filterId == 0, "--stats 未指定 filter");
+    }
+    {
+        wchar_t *argv[] = { L"LogGuard.exe", L"--file", L"Security.evtx",
+                            L"--stats", L"--filter", L"failed" };
+        CHECK(Cli_Parse(6, argv, &opt) == 0, "--stats 与 --file/--filter 组合成功");
+        CHECK(opt.stats == 1 && opt.hasFile == 1 && opt.filterId == 2,
+              "组合参数都置位");
+        CHECK(opt.batch == 1, "组合参数进入批处理");
+    }
+    {
+        wchar_t *argv[] = { L"LogGuard.exe", L"--stats", L"--export", L"stat.csv" };
+        CHECK(Cli_Parse(4, argv, &opt) == 0, "--stats 与 --export 组合成功");
+        CHECK(opt.stats == 1 && opt.hasExport == 1, "统计与导出同时置位");
+        CHECK_WSTR(L"stat.csv", opt.exportPath, "统计导出路径正确");
+    }
+    {
+        wchar_t *argv[] = { L"LogGuard.exe" };
+        CHECK(Cli_Parse(1, argv, &opt) == 0 && opt.stats == 0, "默认不做统计");
+    }
+}
+
 int main(void)
 {
     TestHelpAndVersion();
@@ -201,6 +232,7 @@ int main(void)
     TestLimit();
     TestErrors();
     TestDefaults();
+    TestStats();
 
     printf("\n%d checks, %d failed.\n", g_total, g_failed);
     if (g_failed == 0) {

@@ -25,6 +25,7 @@ typedef struct {
 
     int filterId;
     int limit;                    /* 0 = 未指定 */
+    int stats;                    /* 1 = 输出统计面板而不是逐条记录 */
 
     const char *error;            /* 解析失败时的静态错误文本（UTF-8）；NULL 表示成功 */
 } CliOptions;

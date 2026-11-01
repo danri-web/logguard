@@ -10,13 +10,14 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     add_compile_options(-Wall -Wextra)
 endif()
 
-# 收集源文件（注意：export.c / cli.c 必须在内）
+# 收集源文件（注意：export.c / cli.c / stats.c 必须在内）
 set(SOURCES
     src/main.c
     src/log_reader.c
     src/xml_parser.c
     src/filter.c
     src/ui.c
+    src/stats.c
     src/export.c
     src/cli.c
 )
@@ -55,6 +56,16 @@ add_executable(test_cli
 target_include_directories(test_cli PRIVATE include)
 
 add_test(NAME TestCli COMMAND test_cli)
+
+# 统计模块只用 LogEntry 数组，链接 filter.c 拿 Filter_ParseHour 等公共逻辑
+add_executable(test_stats
+    tests/test_stats.c
+    src/stats.c
+    src/filter.c
+)
+target_include_directories(test_stats PRIVATE include)
+
+add_test(NAME TestStats COMMAND test_stats)
 
 if(WIN32)
     add_executable(test_xml
