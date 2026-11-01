@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.2.2] - 2026-11-01
+
+### Fixed
+
+- `tests/test_report.c` 不再依赖 `tmpfile()`：部分 Windows 环境（`%TMP%` 不可写、
+  受限沙箱、旧 msvcrt 把临时文件建在当前盘根目录）下 `tmpfile()` 直接返回 NULL，
+  会让 28 条断言全部连坐失败。改为在当前目录写 `_test_report.tmp.html`，用完即删。
+
 ## [3.2.1] - 2026-11-01
 
 ### Fixed

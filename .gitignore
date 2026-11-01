@@ -22,5 +22,8 @@ Makefile
 LogGuard_Report.csv
 LogGuard_Report.html
 
+# 测试用的临时文件（test_report 正常跑完会自己删）
+_test_report.tmp.html
+
 # 日志样本（可能含用户名/IP，不要提交）
 *.evtx

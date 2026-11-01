@@ -44,6 +44,18 @@ static int g_failed = 0;
 
 static char g_html[65536];
 
+/*
+ * 测试用的临时文件放在当前目录。
+ * 不用 tmpfile()：部分 Windows 环境下它直接返回 NULL（%TMP% 不可写、沙箱、
+ * 老 msvcrt 把临时文件建在当前盘根目录），会让所有断言连坐失败。
+ */
+#define REPORT_TEST_TMP "_test_report.tmp.html"
+
+static FILE *OpenTempFile(void)
+{
+    return fopen(REPORT_TEST_TMP, "wb+");
+}
+
 static void CopyStr(char *dst, size_t dstLen, const char *src)
 {
     size_t n = strlen(src);
@@ -80,10 +92,11 @@ static int Render(const LogEntry *logs, int count, const char *title, const char
     meta.version = "3.2.0";
     meta.generatedAt = "2026-11-01 13:30:00";
 
-    fp = tmpfile();
+    fp = OpenTempFile();
     if (fp == NULL) return 0;
     if (Report_WriteHtml(fp, &meta, &summary, logs, count) != 0) {
         fclose(fp);
+        remove(REPORT_TEST_TMP);
         return 0;
     }
     fflush(fp);
@@ -91,6 +104,7 @@ static int Render(const LogEntry *logs, int count, const char *title, const char
     n = fread(g_html, 1, sizeof(g_html) - 1, fp);
     g_html[n] = '\0';
     fclose(fp);
+    remove(REPORT_TEST_TMP);
     return 1;
 }
 
@@ -158,11 +172,12 @@ static void TestBadArguments(void)
     CHECK(Stats_Compute(&log, 1, &summary) == 0, "准备统计结果");
 
     CHECK(Report_WriteHtml(NULL, NULL, &summary, &log, 1) == -1, "fp=NULL 被拒绝");
-    fp = tmpfile();
-    CHECK(fp != NULL, "能开临时文件");
+    fp = OpenTempFile();
+    CHECK(fp != NULL, "能打开临时文件");
     if (fp != NULL) {
         CHECK(Report_WriteHtml(fp, NULL, &summary, &log, 1) == -1, "meta=NULL 被拒绝");
         fclose(fp);
+        remove(REPORT_TEST_TMP);
     }
     CHECK(Report_WriteHtml(NULL, NULL, NULL, NULL, 0) == -1, "全 NULL 被拒绝");
 }
