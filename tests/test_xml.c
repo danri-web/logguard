@@ -3,6 +3,7 @@
 #include <wchar.h>
 
 #include "xml_parser.h"
+#include "console_utf8.h"
 
 static int g_total = 0;
 static int g_failed = 0;
@@ -152,6 +153,7 @@ static void TestLongUserNameDescription(void)
 
 int main(void)
 {
+    TestConsoleUtf8();
     TestEventId();
     TestDataValue();
     TestTimeCreated();

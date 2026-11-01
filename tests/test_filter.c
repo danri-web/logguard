@@ -3,6 +3,7 @@
 
 #include "filter.h"
 #include "log_entry.h"
+#include "console_utf8.h"
 
 static int g_total = 0;
 static int g_failed = 0;
@@ -44,6 +45,7 @@ static LogEntry MakeLog(int eventId, const char *user,
 
 int main(void)
 {
+    TestConsoleUtf8();
     LogEntry log;
 
     /* ---------------- Filter_All ---------------- */

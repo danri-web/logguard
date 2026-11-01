@@ -191,6 +191,12 @@ gcc -std=c99 -Wall -Wextra -Iinclude tests\test_report.c src\report.c src\stats.
 统计聚合（排序、并列、Top 上限、`-` 排除、账户大小写聚合、时间解析失败）、
 HTML 报告（结构完整、深色模式、脚本注入被转义、空样本）。
 
+> **控制台编码**：程序输出 UTF-8。Windows PowerShell 5.1 默认按控制台代码页（936/GBK）
+> 解码子进程输出，中文会显示成乱码。先在会话里执行
+> `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8`（写进 `$PROFILE` 可永久生效）；
+> `chcp 65001` 单独在 5.1 里不够。测试程序在 Windows 下会自己把控制台切到 65001，
+> 这一步只对 cmd / Windows Terminal 直接运行生效。
+
 ---
 
 ## 运行

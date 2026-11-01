@@ -1,5 +1,15 @@
 # Changelog
 
+## [3.2.1] - 2026-11-01
+
+### Fixed
+
+- 测试程序在 Windows 控制台输出 UTF-8 中文时不再乱码：新增 `tests/console_utf8.h`，
+  统一把控制台代码页切到 65001（对 cmd / Windows Terminal 直接运行生效）。
+- README「单元测试」补上控制台编码说明：PowerShell 5.1 读子进程输出按控制台编码解码，
+  需要在会话里设置 `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8`；只改
+  `chcp` 在 5.1 里不生效。
+
 ## [3.2.0] - 2026-11-01
 
 ### Added

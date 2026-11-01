@@ -4,6 +4,7 @@
 
 #include "cli.h"
 #include "log_entry.h"
+#include "console_utf8.h"
 
 static int g_total = 0;
 static int g_failed = 0;
@@ -256,6 +257,7 @@ static void TestHtml(void)
 
 int main(void)
 {
+    TestConsoleUtf8();
     TestHelpAndVersion();
     TestFileAndExport();
     TestFilters();
