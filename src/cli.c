@@ -1,4 +1,4 @@
-#include <stdio.h>
+﻿#include <stdio.h>
 #include <string.h>
 #include <wchar.h>
 
@@ -47,6 +47,15 @@ static int CopyPath(wchar_t *dst, const wchar_t *src)
 {
     size_t n = wcslen(src);
     if (n == 0 || n >= CLI_PATH_MAX) return 0;
+    memcpy(dst, src, (n + 1) * sizeof(wchar_t));
+    return 1;
+}
+
+/* 时间参数比路径短：最长 "YYYY-MM-DD HH:MM:SS" 共 19 个字符 */
+static int CopyTime(wchar_t *dst, size_t dstLen, const wchar_t *src)
+{
+    size_t n = wcslen(src);
+    if (n == 0 || n >= dstLen) return 0;
     memcpy(dst, src, (n + 1) * sizeof(wchar_t));
     return 1;
 }
@@ -157,6 +166,31 @@ int Cli_Parse(int argc, wchar_t *const *argv, CliOptions *opt)
             }
             opt->hasExport = 1;
             opt->batch = 1;
+        } else if (WcsEqual(arg, L"--since")) {
+            if (++i >= argc) {
+                return Fail(opt, "--since 需要一个时间，例如 \"2026-11-01\" 或 \"2026-11-01 08:00:00\"");
+            }
+            if (!CopyTime(opt->since, CLI_TIME_MAX, argv[i])) {
+                return Fail(opt, "--since 时间格式不对（最长 19 个字符：YYYY-MM-DD HH:MM:SS）");
+            }
+            opt->hasSince = 1;
+            opt->batch = 1;
+        } else if (WcsEqual(arg, L"--until")) {
+            if (++i >= argc) {
+                return Fail(opt, "--until 需要一个时间，例如 \"2026-11-01\" 或 \"2026-11-01 23:59:59\"");
+            }
+            if (!CopyTime(opt->until, CLI_TIME_MAX, argv[i])) {
+                return Fail(opt, "--until 时间格式不对（最长 19 个字符：YYYY-MM-DD HH:MM:SS）");
+            }
+            opt->hasUntil = 1;
+            opt->batch = 1;
+        } else if (WcsEqual(arg, L"--whitelist")) {
+            if (++i >= argc) return Fail(opt, "--whitelist 需要一个文本文件路径");
+            if (!CopyPath(opt->whitelistPath, argv[i])) {
+                return Fail(opt, "--whitelist 路径为空或过长（最多 511 个字符）");
+            }
+            opt->hasWhitelist = 1;
+            opt->batch = 1;
         } else if (arg[0] == L'-') {
             return Fail(opt, "未知参数（用 --help 查看用法）");
         } else {
@@ -182,6 +216,10 @@ void Cli_PrintUsage(void)
     printf("  --stats             输出统计面板（事件分布 / Top 源 IP / Top 用户名 / 按小时）\n");
     printf("                     可配合 --filter 只统计某类事件；与 --export 同用时导出原始记录\n");
     printf("  --html <路径>       生成单文件 HTML 报告（内嵌 CSS，统计图 + 记录明细）\n");
+    printf("  --since <时间>      只看这个时间之后的事件（本地时间，YYYY-MM-DD[ HH:MM[:SS]]）\n");
+    printf("  --until <时间>      只看这个时间之前的事件（同上；可以和 --since 一起用）\n");
+    printf("  --whitelist <路径>  白名单文件：每行 \"ip <地址>\" 或 \"user <账户>\"，# 开头是注释\n");
+    printf("                     命中的记录在筛选/统计/报告/导出之前就被剔除\n");
     printf("  --no-color          关闭 ANSI 颜色\n");
     printf("  -h, --help          显示本帮助\n");
     printf("  -V, --version       显示版本号\n\n");

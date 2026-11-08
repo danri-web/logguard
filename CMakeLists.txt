@@ -21,6 +21,8 @@ set(SOURCES
     src/report.c
     src/export.c
     src/cli.c
+    src/daterange.c
+    src/whitelist.c
 )
 
 # Windows 特有的资源文件（manifest 嵌入）
@@ -57,6 +59,25 @@ add_executable(test_cli
 target_include_directories(test_cli PRIVATE include)
 
 add_test(NAME TestCli COMMAND test_cli)
+
+# --since/--until 的位置换算与 XPath 拼装（依赖 Win32 时间 API）
+add_executable(test_daterange
+    tests/test_daterange.c
+    src/daterange.c
+)
+target_include_directories(test_daterange PRIVATE include)
+
+add_test(NAME TestDaterange COMMAND test_daterange)
+
+# 白名单解析与匹配（账户名规则复用 filter.c 的本地部分提取）
+add_executable(test_whitelist
+    tests/test_whitelist.c
+    src/whitelist.c
+    src/filter.c
+)
+target_include_directories(test_whitelist PRIVATE include)
+
+add_test(NAME TestWhitelist COMMAND test_whitelist)
 
 # 统计模块只用 LogEntry 数组，链接 filter.c 拿 Filter_ParseHour 等公共逻辑
 add_executable(test_stats

@@ -15,6 +15,8 @@
 #include "export.h"
 #include "cli.h"
 #include "version.h"
+#include "daterange.h"
+#include "whitelist.h"
 
 /* 老版本 SDK 头文件里可能没有这个常量 */
 #ifndef ENABLE_VIRTUAL_TERMINAL_PROCESSING
@@ -42,6 +44,13 @@ static int      g_logCount = 0;
 
 /* 空串表示数据源是本机 Security 通道；否则是 .evtx 文件路径 */
 static wchar_t  g_sourcePath[LOGUARD_PATH_MAX];
+
+/* 时间范围（已转成 UTC FILETIME）与白名单；批处理模式才有值 */
+static int       g_hasSince = 0;
+static int       g_hasUntil = 0;
+static FILETIME  g_since;
+static FILETIME  g_until;
+static Whitelist g_whitelist;
 
 /* 是否真的能输出 ANSI 颜色（重定向到文件时为 0） */
 static int      g_colorEnabled = 0;
@@ -137,18 +146,27 @@ static FilterFunc GetFilterFunc(int option) {
     }
 }
 
-/* 按菜单项选择 XPath 粗筛条件 */
-static const wchar_t *XpathForId(int id)
+/* 按菜单项选择 XPath 里 EventID 那一组条件；空串表示不按 EventID 收窄 */
+static const wchar_t *XpathPredicateForId(int id)
 {
-    if (id == 6) return L"*[System[(EventID=4672)]]";
-    if (id == 7) return L"*[System[(EventID=4720)]]";
+    if (id == 6) return L"EventID=4672";
+    if (id == 7) return L"EventID=4720";
     /* 统计面板与 HTML 报告看数据源里的事件全貌，不按 EventID 收窄 */
-    if (id == MENU_ID_STATS || id == MENU_ID_REPORT) return L"*";
+    if (id == MENU_ID_STATS || id == MENU_ID_REPORT) return L"";
     /* 安全事件总览：只取四类审计事件，Application/System 里的同号事件也会被排除 */
     if (id == MENU_ID_SECURITY) {
-        return L"*[System[(EventID=4624 or EventID=4625 or EventID=4672 or EventID=4720)]]";
+        return L"EventID=4624 or EventID=4625 or EventID=4672 or EventID=4720";
     }
-    return L"*[System[(EventID=4624 or EventID=4625)]]";
+    return L"EventID=4624 or EventID=4625";
+}
+
+/* 把 EventID 条件和时间范围拼成完整 XPath */
+static int BuildXpathForId(int id, wchar_t *buf, size_t len)
+{
+    return DateRange_BuildXpath(XpathPredicateForId(id),
+                                g_hasSince ? &g_since : NULL,
+                                g_hasUntil ? &g_until : NULL,
+                                buf, len);
 }
 
 static const MenuItem *FindMenuItem(int id)
@@ -396,6 +414,7 @@ static int ExecuteQuery(const MenuItem *item, const wchar_t *target, int isFile,
                         int maxRead, const OutputOptions *out)
 {
     wchar_t errBuf[256] = {0};
+    wchar_t xpath[512];
     LogEntry *matched;
     int count = 0;
     int rc = 0;
@@ -403,8 +422,12 @@ static int ExecuteQuery(const MenuItem *item, const wchar_t *target, int isFile,
 
     if (maxRead <= 0 || maxRead > LOG_MAX_COUNT) maxRead = 100;
 
-    g_logCount = ReadLogs(target, isFile, g_logs, maxRead,
-                          XpathForId(item->id), errBuf,
+    if (BuildXpathForId(item->id, xpath, sizeof(xpath) / sizeof(xpath[0])) != 0) {
+        PrintError("时间范围拼不出查询条件，请检查 --since / --until。");
+        return 1;
+    }
+
+    g_logCount = ReadLogs(target, isFile, g_logs, maxRead, xpath, errBuf,
                           sizeof(errBuf) / sizeof(errBuf[0]));
 
     if (g_logCount < 0) {
@@ -424,6 +447,16 @@ static int ExecuteQuery(const MenuItem *item, const wchar_t *target, int isFile,
         }
         PrintError(outMsg);
         return 2;
+    }
+
+    /* 白名单在筛选/统计/报告/导出之前生效：后面所有环节看到的都是「剔干净」的样本 */
+    if (g_whitelist.count > 0) {
+        int dropped = Whitelist_Filter(g_logs, g_logCount, &g_whitelist);
+        if (dropped > 0) {
+            char note[128];
+            snprintf(note, sizeof(note), "白名单忽略了 %d 条记录。", dropped);
+            PrintInfo(note);
+        }
     }
 
     if (!summaryMode) PrintHeader(item);
@@ -450,10 +483,14 @@ static int ExecuteQuery(const MenuItem *item, const wchar_t *target, int isFile,
             int i;
             int securityCount = 0;
 
-            for (i = 0; i < summary.eventKindCount; i++) {
-                int id = summary.events[i].eventId;
+            /*
+             * 必须数原始样本，不能数 summary.events：那里只留了前 8 种 EventID，
+             * 四类事件没进前 8 时会被算成 0，提示就会误报「样本里没有安全事件」。
+             */
+            for (i = 0; i < g_logCount; i++) {
+                int id = g_logs[i].eventId;
                 if (id == 4624 || id == 4625 || id == 4672 || id == 4720) {
-                    securityCount += summary.events[i].count;
+                    securityCount++;
                 }
             }
             if (securityCount * 2 < summary.total) {
@@ -540,6 +577,55 @@ static void RunQuery(const MenuItem *item)
     ExecuteQuery(item, target, isFile, item->maxRead, &out);
 }
 
+/*
+ * 批处理模式的前置准备：解析时间范围、加载白名单。
+ * 出错时打印原因并返回 -1（调用方直接退出，不要带着半个条件去查）。
+ */
+static int PrepareRangeAndWhitelist(const CliOptions *opt)
+{
+    if (opt->hasSince) {
+        if (DateRange_ParseLocal(opt->since, &g_since) != 0) {
+            PrintError("--since 不是合法时间（例：2026-11-01 或 \"2026-11-01 08:00:00\"）。");
+            return -1;
+        }
+        g_hasSince = 1;
+    }
+
+    if (opt->hasUntil) {
+        if (DateRange_ParseLocal(opt->until, &g_until) != 0) {
+            PrintError("--until 不是合法时间（例：2026-11-01 或 \"2026-11-01 23:59:59\"）。");
+            return -1;
+        }
+        g_hasUntil = 1;
+    }
+
+    if (g_hasSince && g_hasUntil && CompareFileTime(&g_since, &g_until) > 0) {
+        PrintError("--since 不能晚于 --until。");
+        return -1;
+    }
+
+    if (opt->hasWhitelist) {
+        char pathUtf8[LOGUARD_PATH_MAX * 4] = {0};
+
+        Whitelist_Init(&g_whitelist);
+        if (Whitelist_Load(&g_whitelist, opt->whitelistPath) != 0) {
+            char msg[4096];
+            WideToUtf8(opt->whitelistPath, pathUtf8, sizeof(pathUtf8));
+            snprintf(msg, sizeof(msg), "打不开白名单文件 \"%s\"。", pathUtf8);
+            PrintError(msg);
+            return -1;
+        }
+        printf("白名单：%d 条规则\n", g_whitelist.count);
+        if (g_whitelist.skipped > 0) {
+            char msg[160];
+            snprintf(msg, sizeof(msg), "白名单里有 %d 行认不出来，已跳过。", g_whitelist.skipped);
+            PrintInfo(msg);
+        }
+    }
+
+    return 0;
+}
+
 /* 批处理模式：一条命令完成查询和导出 */
 static int RunBatch(const CliOptions *opt)
 {
@@ -575,6 +661,16 @@ static int RunBatch(const CliOptions *opt)
 
     DescribeSource(target, isFile, desc, sizeof(desc));
     printf("%s %s  |  数据源：%s\n", LOGUARD_NAME, LOGUARD_VERSION, desc);
+
+    if (PrepareRangeAndWhitelist(opt) != 0) return 1;
+
+    if (opt->hasSince || opt->hasUntil) {
+        char sinceUtf8[64] = "不限";
+        char untilUtf8[64] = "不限";
+        if (opt->hasSince) WideToUtf8(opt->since, sinceUtf8, sizeof(sinceUtf8));
+        if (opt->hasUntil) WideToUtf8(opt->until, untilUtf8, sizeof(untilUtf8));
+        printf("时间范围（本地）：%s ~ %s\n", sinceUtf8, untilUtf8);
+    }
 
     if (!isFile && !IsElevated()) {
         fprintf(stderr, "提示：当前不是管理员，读取本机 Security 会失败；"

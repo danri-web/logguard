@@ -151,6 +151,23 @@ static void TestLongUserNameDescription(void)
     CHECK(Utf8IsValid(e.description) == 1, "描述截断后仍是合法 UTF-8");
 }
 
+static void TestProvider(void)
+{
+    char provider[128];
+    LogEntry log;
+
+    CHECK(XmlGetProviderName(kXml4625, provider, sizeof(provider)) == 0, "Provider 可解析");
+    CHECK(strcmp(provider, "Microsoft-Windows-Security-Auditing") == 0, "Provider 值正确");
+
+    CHECK(XmlGetProviderName(L"<Event><System></System></Event>", provider,
+                             sizeof(provider)) == -1, "没有 Provider 时返回 -1");
+
+    memset(&log, 0, sizeof(log));
+    CHECK(ParseEventXml(kXml4625, &log) == 0, "整条事件可解析");
+    CHECK(strcmp(log.provider, "Microsoft-Windows-Security-Auditing") == 0,
+          "ParseEventXml 填了 provider");
+}
+
 int main(void)
 {
     TestConsoleUtf8();
@@ -159,6 +176,7 @@ int main(void)
     TestTimeCreated();
     TestParseEvent();
     TestLongUserNameDescription();
+    TestProvider();
 
     printf("\n%d checks, %d failed.\n", g_total, g_failed);
     if (g_failed == 0) {

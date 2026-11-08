@@ -182,6 +182,18 @@ int main(void)
     CHECK_EQ(-1, Filter_ParseHour("2026/10/28/03:15:00"), "Filter_ParseHour: 分隔符错误返回 -1");
     CHECK_EQ(-1, Filter_ParseHour("2026/10/28-xx:00:00"), "Filter_ParseHour: 非数字返回 -1");
 
+    /* ---------------- Filter_SecurityEvent：Provider 校验 ---------------- */
+    log = MakeLog(4624, "user", "2026/10/28-10:00:00", "10.0.0.1");
+    CHECK_EQ(1, Filter_SecurityEvent(&log), "Filter_SecurityEvent: 没有 Provider 时保持宽松");
+    CopyStr(log.provider, sizeof(log.provider), "Microsoft-Windows-Security-Auditing");
+    CHECK_EQ(1, Filter_SecurityEvent(&log), "Filter_SecurityEvent: 安全审计 Provider 命中");
+    CopyStr(log.provider, sizeof(log.provider), "Microsoft-Windows-EventSystem");
+    CHECK_EQ(0, Filter_SecurityEvent(&log), "Filter_SecurityEvent: 同号事件 Provider 不对就排除");
+    log.eventId = 4720;
+    CHECK_EQ(0, Filter_SecurityEvent(&log), "Filter_SecurityEvent: 4720 也要校验 Provider");
+    log.eventId = 1234;
+    CHECK_EQ(0, Filter_SecurityEvent(&log), "Filter_SecurityEvent: 非四类事件直接排除");
+
     printf("\n%d checks, %d failed.\n", g_total, g_failed);
     if (g_failed == 0) {
         printf("All filter tests passed!\n");

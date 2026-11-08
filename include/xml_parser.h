@@ -35,4 +35,10 @@ int XmlGetDataValue(const wchar_t *xml, const wchar_t *name,
 int XmlGetTimeCreated(const wchar_t *xml,
                       char *out, size_t outLen);
 
+/*
+ * 读取 <Provider Name="...">，转换为 UTF-8 写入 out（带终止符）。
+ * 返回：0 成功，-1 未找到。
+ */
+int XmlGetProviderName(const wchar_t *xml, char *out, size_t outLen);
+
 #endif /* XML_PARSER_H */

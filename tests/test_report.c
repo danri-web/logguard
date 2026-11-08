@@ -190,6 +190,13 @@ int main(void)
     TestEmpty();
     TestBadArguments();
 
+    /* 临时文件不能留在仓库里：之前只保证「跑完删除」，没有断言 */
+    {
+        FILE *leftover = fopen(REPORT_TEST_TMP, "rb");
+        CHECK(leftover == NULL, "临时报告文件已清理");
+        if (leftover != NULL) fclose(leftover);
+    }
+
     printf("\n%d checks, %d failed.\n", g_total, g_failed);
     if (g_failed == 0) {
         printf("All report tests passed!\n");

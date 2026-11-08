@@ -73,9 +73,27 @@ int Filter_AccountCreated(const LogEntry *log) {
     return log->eventId == 4720;
 }
 
+/* Provider 名里带 Security-Auditing 才是真的安全审计事件 */
+static int SecurityProviderState(const char *provider)
+{
+    if (provider == NULL || provider[0] == '\0') return -1;  /* 没有 Provider 字段：未知 */
+    return strstr(provider, "Security-Auditing") != NULL ? 1 : 0;
+}
+
+/*
+ * 4624/4625/4672/4720 四类事件。
+ * EventID 在不同日志里会撞号（Application/System 里也有 4625），
+ * 所以能拿到 Provider 时要求它是 Security-Auditing；拿不到就保持旧行为（宽松）。
+ */
 int Filter_SecurityEvent(const LogEntry *log) {
-    return log->eventId == 4624 || log->eventId == 4625 ||
-           log->eventId == 4672 || log->eventId == 4720;
+    int state;
+
+    if (log->eventId != 4624 && log->eventId != 4625 &&
+        log->eventId != 4672 && log->eventId != 4720) return 0;
+
+    state = SecurityProviderState(log->provider);
+    if (state < 0) return 1;
+    return state;
 }
 
 /* 聚合统计前判断源 IP 是否可用：空串和 "-" 都不代表真实来源 */

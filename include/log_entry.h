@@ -8,6 +8,7 @@
 #define LOG_DESC_LEN    256
 #define LOG_IP_LEN       64
 #define LOG_PROC_LEN    128
+#define LOG_PROVIDER_LEN 128
 
 typedef struct {
     int  eventId;                          
@@ -17,6 +18,7 @@ typedef struct {
     char description[LOG_DESC_LEN];        
     char sourceIP[LOG_IP_LEN];             
     char processName[LOG_PROC_LEN];        
+    char provider[LOG_PROVIDER_LEN];       /* <Provider Name="...">；同一 EventID 在不同日志里会撞号 */
 } LogEntry;
 
 #endif

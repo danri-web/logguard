@@ -161,6 +161,33 @@ int XmlGetTimeCreated(const wchar_t *xml, char *out, size_t outLen)
     return -1;
 }
 
+int XmlGetProviderName(const wchar_t *xml, char *out, size_t outLen)
+{
+    const wchar_t *prefix1 = L"<Provider Name=\"";
+    const wchar_t *prefix2 = L"<Provider Name='";
+    const wchar_t *start;
+    const wchar_t *end;
+
+    if (outLen == 0) return -1;
+    out[0] = '\0';
+    if (!xml) return -1;
+
+    start = wcsstr(xml, prefix1);
+    if (start) {
+        start += wcslen(prefix1);
+        end = wcschr(start, L'"');
+    } else {
+        start = wcsstr(xml, prefix2);
+        if (!start) return -1;
+        start += wcslen(prefix2);
+        end = wcschr(start, L'\'');
+    }
+    if (!end || end <= start) return -1;
+
+    WideToUtf8(start, (size_t)(end - start), out, outLen);
+    return out[0] != '\0' ? 0 : -1;
+}
+
 int ParseEventXml(const wchar_t *xml, LogEntry *out)
 {
     if (!xml || !out) return -1;
@@ -171,6 +198,7 @@ int ParseEventXml(const wchar_t *xml, LogEntry *out)
     XmlGetTimeCreated(xml, out->dateAndTime, LOG_TIME_LEN);
     XmlGetDataValue(xml, L"IpAddress", out->sourceIP, LOG_IP_LEN);
     XmlGetDataValue(xml, L"ProcessName", out->processName, LOG_PROC_LEN);
+    XmlGetProviderName(xml, out->provider, LOG_PROVIDER_LEN);
 
     if (XmlGetDataValue(xml, L"TargetUserName", out->userName, LOG_USER_LEN) != 0) {
         XmlGetDataValue(xml, L"SubjectUserName", out->userName, LOG_USER_LEN);

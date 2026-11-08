@@ -268,6 +268,68 @@ static void TestHtml(void)
     }
 }
 
+static void TestTimeRange(void)
+{
+    CliOptions opt;
+
+    {
+        wchar_t *argv[] = { L"LogGuard.exe", L"--since", L"2026-11-01" };
+        CHECK(Cli_Parse(3, argv, &opt) == 0, "解析 --since 成功");
+        CHECK(opt.hasSince == 1 && opt.hasUntil == 0, "--since 置位、--until 未置位");
+        CHECK_WSTR(L"2026-11-01", opt.since, "--since 值正确");
+        CHECK(opt.batch == 1, "--since 进入批处理");
+    }
+    {
+        wchar_t *argv[] = { L"LogGuard.exe", L"--until", L"2026-11-01 23:59:59" };
+        CHECK(Cli_Parse(3, argv, &opt) == 0, "解析 --until 成功");
+        CHECK(opt.hasUntil == 1, "--until 置位");
+        CHECK_WSTR(L"2026-11-01 23:59:59", opt.until, "--until 值包含空格也不拆开");
+    }
+    {
+        wchar_t *argv[] = { L"LogGuard.exe", L"--file", L"a.evtx",
+                            L"--since", L"2026-11-01", L"--until", L"2026-11-02" };
+        CHECK(Cli_Parse(7, argv, &opt) == 0, "--file 与时间范围可以同用");
+        CHECK(opt.hasFile == 1 && opt.hasSince == 1 && opt.hasUntil == 1,
+              "三个参数同时生效");
+    }
+    {
+        wchar_t *argv[] = { L"LogGuard.exe", L"--since" };
+        CHECK(Cli_Parse(2, argv, &opt) == -1, "--since 缺值被拒绝");
+    }
+    {
+        wchar_t *argv[] = { L"LogGuard.exe", L"--since", L"" };
+        CHECK(Cli_Parse(3, argv, &opt) == -1, "--since 空值被拒绝");
+    }
+    {
+        /* 32 个字符装不下：CLI 层先拦住，不把垃圾往下传 */
+        wchar_t *argv[] = { L"LogGuard.exe", L"--since",
+                            L"2026-11-01 23:59:59 0123456789" };
+        CHECK(Cli_Parse(3, argv, &opt) == -1, "--since 超长被拒绝");
+    }
+}
+
+static void TestWhitelistOption(void)
+{
+    CliOptions opt;
+
+    {
+        wchar_t *argv[] = { L"LogGuard.exe", L"--whitelist", L"white.txt" };
+        CHECK(Cli_Parse(3, argv, &opt) == 0, "解析 --whitelist 成功");
+        CHECK(opt.hasWhitelist == 1, "--whitelist 置位");
+        CHECK_WSTR(L"white.txt", opt.whitelistPath, "--whitelist 路径正确");
+        CHECK(opt.batch == 1, "--whitelist 进入批处理");
+    }
+    {
+        wchar_t *argv[] = { L"LogGuard.exe", L"--whitelist" };
+        CHECK(Cli_Parse(2, argv, &opt) == -1, "--whitelist 缺值被拒绝");
+    }
+    {
+        wchar_t *argv[] = { L"LogGuard.exe" };
+        CHECK(Cli_Parse(1, argv, &opt) == 0 && opt.hasWhitelist == 0,
+              "默认不带白名单");
+    }
+}
+
 int main(void)
 {
     TestConsoleUtf8();
@@ -279,6 +341,8 @@ int main(void)
     TestDefaults();
     TestStats();
     TestHtml();
+    TestTimeRange();
+    TestWhitelistOption();
 
     printf("\n%d checks, %d failed.\n", g_total, g_failed);
     if (g_failed == 0) {

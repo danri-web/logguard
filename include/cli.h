@@ -6,6 +6,9 @@
 /* 命令行里的路径上限（宽字符数），比 MAX_PATH 宽裕一些 */
 #define CLI_PATH_MAX 512
 
+/* 时间参数上限："YYYY-MM-DD HH:MM:SS" = 19 个字符 + 结尾 NUL */
+#define CLI_TIME_MAX 20
+
 /*
  * 命令行解析结果。
  * filterId 用菜单编号表示：1=all 2=failed 3=admin 4=brute 5=night 6=privilege 7=created
@@ -29,6 +32,14 @@ typedef struct {
     int filterId;
     int limit;                    /* 0 = 未指定 */
     int stats;                    /* 1 = 输出统计面板而不是逐条记录 */
+
+    int hasSince;                 /* 1 = 指定了 --since */
+    wchar_t since[32];            /* "YYYY-MM-DD[ HH:MM[:SS]]" */
+    int hasUntil;                 /* 1 = 指定了 --until */
+    wchar_t until[32];
+
+    int hasWhitelist;             /* 1 = 指定了 --whitelist */
+    wchar_t whitelistPath[CLI_PATH_MAX];
 
     const char *error;            /* 解析失败时的静态错误文本（UTF-8）；NULL 表示成功 */
 } CliOptions;

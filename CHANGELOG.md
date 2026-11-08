@@ -1,5 +1,27 @@
 # Changelog
 
+## [3.3.0] - 2026-11-08
+
+### Added
+
+- `--since <时间>` / `--until <时间>`：按时间范围只读需要的事件。时间按本地时间输入
+  （`YYYY-MM-DD` 或 `YYYY-MM-DD HH:MM[:SS]`），换算成 UTC 后**下推到 XPath 的 `TimeCreated`**，
+  少读日志；两个参数可以单独用，也可以组成区间（起止颠倒会被拒绝）。
+- `--whitelist <路径>`：白名单文件，每行 `ip <地址>` 或 `user <账户>`，`#` 开头是注释。
+  命中记录在筛选/统计/报告/导出之前剔除；认不出的行只提示、不中断。
+- `<Provider Name="...">` 现在会被解析进 `LogEntry.provider`；逐条模式下 `security` 规则要求
+  Provider 名里带 `Security-Auditing`，同一 EventID 在 Application/System 里的撞号事件不再混进来。
+
+### Changed
+
+- `test_report` 补一条「临时文件已清理」断言（之前只保证跑完删除，没有断言）。
+- 断言总数 254 → **344**（新增 daterange 33 条、whitelist 28 条，其余为 CLI/过滤器/XML 的扩展）。
+
+### Notes
+
+- 统计面板与 HTML 报告的口径没变：仍按 XPath 命中的样本统计，所以
+  `--filter security --stats` 在非 Security 日志上仍可能算进同号事件；逐条模式才套 Provider 校验。
+
 ## [3.2.3] - 2026-11-01
 
 ### Added

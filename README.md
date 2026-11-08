@@ -89,6 +89,9 @@
 | `--export <路径>` | 把结果导出为 CSV（支持中文路径） |
 | `--stats` | 输出统计面板；可与 `--filter` 组合，与 `--export` 同用时导出统计所依据的原始记录 |
 | `--html <路径>` | 生成单文件 HTML 报告（支持中文路径）；可与 `--filter`、`--stats` 组合 |
+| `--since <时间>` | 只看该时间之后的事件（本地时间，`YYYY-MM-DD` / `YYYY-MM-DD HH:MM[:SS]`） |
+| `--until <时间>` | 只看该时间之前的事件；可与 `--since` 组合成一个区间 |
+| `--whitelist <路径>` | 白名单文件：每行 `ip <地址>` 或 `user <账户>`，`#` 开头是注释；命中的记录在筛选/统计/报告/导出之前剔除 |
 | `--no-color` | 关闭 ANSI 颜色 |
 | `-h, --help` | 显示帮助 |
 | `-V, --version` | 显示版本号 |
@@ -101,7 +104,7 @@
 
 ```text
 LogGuard/
-├── CMakeLists.txt          # 构建 LogGuard 与 5 个测试目标
+├── CMakeLists.txt          # 构建 LogGuard 与 7 个测试目标
 ├── README.md
 ├── CHANGELOG.md
 ├── LICENSE                 # MIT
@@ -117,6 +120,8 @@ LogGuard/
 │   ├── report.h            # HTML 报告接口（ReportMeta / Report_WriteHtml）
 │   ├── export.h            # CSV 导出接口
 │   ├── cli.h               # 命令行参数解析
+│   ├── daterange.h         # --since/--until：本地时间 → UTC FILETIME → XPath
+│   ├── whitelist.h         # 白名单规则与匹配
 │   ├── version.h           # 版本号
 │   └── ui.h                # 菜单、打印、MenuItem
 │
@@ -129,6 +134,8 @@ LogGuard/
 │   ├── report.c            # 单文件 HTML 报告（内嵌 CSS、转义、柱状图）
 │   ├── export.c            # CSV 写入（BOM、转义、公式注入防护）
 │   ├── cli.c               # 参数解析、帮助文本
+│   ├── daterange.c         # 时间解析、ISO 8601 格式化、XPath 拼装
+│   ├── whitelist.c         # 白名单文件解析与过滤
 │   └── ui.c                # 菜单、表头、单条打印、统计面板
 │
 └── tests/
@@ -136,7 +143,9 @@ LogGuard/
     ├── test_cli.c          # 命令行参数解析测试
     ├── test_stats.c        # 统计聚合测试
     ├── test_report.c       # HTML 报告测试（转义、结构、空样本）
-    └── test_xml.c          # XML 解析器测试
+    ├── test_xml.c          # XML 解析器测试
+    ├── test_daterange.c    # 时间范围与 XPath 拼装测试
+    └── test_whitelist.c    # 白名单解析与匹配测试
 ```
 
 ---
@@ -175,6 +184,7 @@ cmake --build build --config Release
 windres app.rc -o app.o
 gcc -std=c99 -Wall -Wextra -Iinclude `
   src\main.c src\log_reader.c src\xml_parser.c src\filter.c src\ui.c src\stats.c src\report.c src\export.c src\cli.c `
+  src\daterange.c src\whitelist.c `
   app.o -o LogGuard.exe -lwevtapi -lshell32
 ```
 
@@ -188,12 +198,15 @@ gcc -std=c99 -Wall -Wextra -Iinclude tests\test_cli.c src\cli.c -o test_cli.exe
 gcc -std=c99 -Wall -Wextra -Iinclude tests\test_xml.c src\xml_parser.c -o test_xml.exe
 gcc -std=c99 -Wall -Wextra -Iinclude tests\test_stats.c src\stats.c src\filter.c -o test_stats.exe
 gcc -std=c99 -Wall -Wextra -Iinclude tests\test_report.c src\report.c src\stats.c src\filter.c -o test_report.exe
+gcc -std=c99 -Wall -Wextra -Iinclude tests\test_daterange.c src\daterange.c -o test_daterange.exe
+gcc -std=c99 -Wall -Wextra -Iinclude tests\test_whitelist.c src\whitelist.c src\filter.c -o test_whitelist.exe
 ```
 
-共 254 条断言（53 filter + 68 cli + 27 xml + 73 stats + 33 report）。覆盖：8 个过滤器与边界、
-命令行参数、XML 字段解析（含 `<EventID Qualifiers="...">` 兼容与 UTF-8 截断）、
+共 344 条断言（58 filter + 86 cli + 32 xml + 73 stats + 34 report + 33 daterange + 28 whitelist）。覆盖：8 个过滤器与边界、
+命令行参数、XML 字段解析（含 `<EventID Qualifiers="...">` 兼容、Provider、UTF-8 截断）、
 统计聚合（排序、并列、Top 上限、`-` 排除、账户大小写聚合、时间解析失败）、
-HTML 报告（结构完整、深色模式、脚本注入被转义、空样本）。
+HTML 报告（结构完整、深色模式、脚本注入被转义、空样本、临时文件已清理）、
+时间范围（闰年/非法日期/ISO 8601/XPath 拼装）、白名单（注释、大小写、域前缀、上限）。
 
 > **控制台编码**：程序输出 UTF-8。Windows PowerShell 5.1 默认按控制台代码页（936/GBK）
 > 解码子进程输出，中文会显示成乱码。先在会话里执行
@@ -303,9 +316,13 @@ XPath 示例：
 - 统计面板的样本同样最多 1024 条；直方图按本地时间，时间字段格式异常时不计入。
 - HTML 报告同样最多 1024 行明细；图表是纯 CSS，没有交互筛选和导出图片。
 - 事件分布的中文名只覆盖 4624/4625/4672/4720，其余 EventID 显示为“其它”。
-- 事件只按 EventID 判定，不校验 Provider/Channel：Application、System 里存在同号事件
-  （例如 EventSystem 的 4625），`--filter security` 在非 Security 日志上也可能误收；
-  要严格的安全日志请分析管理员导出的 `Security.evtx`。
+- 事件按 EventID 判定；逐条模式下能读到 `<Provider>` 时会额外要求 Provider 名里带
+  `Security-Auditing`（Application/System 的同号事件因此被排除）。**统计面板与 HTML 报告不套这一层**：
+  它们仍按 XPath 命中的样本统计，所以 `--filter security --stats` 在非 Security 日志上仍可能算进同号事件。
+  要严格的安全日志，请分析管理员导出的 `Security.evtx`。
+- `--since` / `--until` 是**本地时间**，允许 `YYYY-MM-DD` 或 `YYYY-MM-DD HH:MM[:SS]`；秒以下和时区后缀不支持。
+- `--whitelist` 只做精确匹配（不做 CIDR / 通配符）；账户名会去掉 `DOMAIN\` 前缀后比较，大小写无关。
+  它在读入之后、筛选之前生效，因此面板和报告看到的是剔除后的样本。
 - 路径上限 511 个宽字符。
 - CSV 防公式注入会给以 `=`、`+`、`-`、`@` 开头的字段加 `'` 前缀（单独的 `-` 除外）。
 
